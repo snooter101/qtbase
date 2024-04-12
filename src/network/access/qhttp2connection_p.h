@@ -20,6 +20,7 @@
 #include <QtCore/qobject.h>
 #include <QtCore/qhash.h>
 #include <QtCore/qvarlengtharray.h>
+#include <QtCore/qxpfunctional.h>
 #include <QtNetwork/qhttp2configuration.h>
 #include <QtNetwork/qtcpsocket.h>
 
@@ -118,7 +119,7 @@ Q_SIGNALS:
     void headersReceived(const HPack::HttpHeader &headers, bool endStream);
     void headersUpdated();
     void errorOccurred(quint32 errorCode, const QString &errorString);
-    void stateChanged(State newState);
+    void stateChanged(QHttp2Stream::State newState);
     void promisedStreamReceived(quint32 newStreamID);
     void uploadBlocked();
     void dataReceived(const QByteArray &data, bool endStream);
@@ -193,6 +194,7 @@ class Q_NETWORK_EXPORT QHttp2Connection : public QObject
 public:
     enum class CreateStreamError {
         MaxConcurrentStreamsReached,
+        StreamIdsExhausted,
         ReceivedGOAWAY,
     };
     Q_ENUM(CreateStreamError)
@@ -252,7 +254,9 @@ private:
                          const char *message); // Connection failed to be established?
     void setH2Configuration(QHttp2Configuration config);
     void closeSession();
-    qsizetype numActiveStreams() const noexcept;
+    qsizetype numActiveStreamsImpl(quint32 mask) const noexcept;
+    qsizetype numActiveRemoteStreams() const noexcept;
+    qsizetype numActiveLocalStreams() const noexcept;
 
     bool sendClientPreface();
     bool sendSETTINGS();
@@ -346,7 +350,6 @@ private:
     bool m_upgradedConnection = false;
     bool m_goingAway = false;
     bool pushPromiseEnabled = false;
-    quint32 lastPromisedID = Http2::connectionStreamID;
     quint32 m_lastIncomingStreamID = Http2::connectionStreamID;
 
     // Server-side only:

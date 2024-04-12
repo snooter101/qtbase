@@ -101,12 +101,7 @@ private:
     static constexpr bool isAsciiOnlyCharsAtCompileTime(Char *str, qsizetype sz) noexcept
     {
         // do not perform check if not at compile time
-#if !defined(QT_SUPPORTS_IS_CONSTANT_EVALUATED)
-        Q_UNUSED(str);
-        Q_UNUSED(sz);
-        return false;
-#else
-        if (!qIsConstantEvaluated())
+        if (!q20::is_constant_evaluated())
             return false;
         if constexpr (sizeof(Char) != sizeof(char)) {
             Q_UNUSED(str);
@@ -119,7 +114,6 @@ private:
             }
             return true;
         }
-#endif
     }
 
     template<typename Char>
@@ -137,10 +131,8 @@ private:
     template <typename Char>
     static constexpr qsizetype lengthHelperPointer(const Char *str) noexcept
     {
-#ifdef QT_SUPPORTS_IS_CONSTANT_EVALUATED
-        if (qIsConstantEvaluated())
+        if (q20::is_constant_evaluated())
             return qsizetype(std::char_traits<Char>::length(str));
-#endif
         if constexpr (sizeof(Char) == sizeof(char16_t))
             return QtPrivate::qustrlen(reinterpret_cast<const char16_t*>(str));
         else
@@ -274,6 +266,14 @@ public:
 
     [[nodiscard]] Q_CORE_EXPORT static int compare(QAnyStringView lhs, QAnyStringView rhs, Qt::CaseSensitivity cs = Qt::CaseSensitive) noexcept;
     [[nodiscard]] Q_CORE_EXPORT static bool equal(QAnyStringView lhs, QAnyStringView rhs) noexcept;
+
+    static constexpr inline bool detects_US_ASCII_at_compile_time =
+#ifdef QT_SUPPORTS_IS_CONSTANT_EVALUATED
+            true
+#else
+            false
+#endif
+            ;
 
     //
     // STL compatibility API:

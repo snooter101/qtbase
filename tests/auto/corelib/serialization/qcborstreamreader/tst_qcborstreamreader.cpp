@@ -699,12 +699,12 @@ void tst_QCborStreamReader::strings()
     if (reader.isByteArray()) {
         QByteArray prefix("some prefix");
         QByteArray ba = prefix;
-        QVERIFY(reader.toByteArray(ba));
+        QVERIFY(reader.readAndAppendToByteArray(ba));
         QCOMPARE(ba, prefix + fullString);
     } else {
         QString prefix("some prefix");
         QString str = prefix;
-        QVERIFY(reader.toString(str));
+        QVERIFY(reader.readAndAppendToString(str));
         QCOMPARE(str, prefix + QString::fromUtf8(fullString));
     }
 
@@ -714,7 +714,7 @@ void tst_QCborStreamReader::strings()
     if (reader.isString()) {
         QByteArray prefix("some prefix");
         QByteArray utf8 = prefix;
-        QVERIFY(reader.toUtf8String(utf8));
+        QVERIFY(reader.readAndAppendToUtf8String(utf8));
         QCOMPARE(utf8, prefix + fullString);
 
         reader.reset();
@@ -954,21 +954,21 @@ void tst_QCborStreamReader::validation()
         if (reader.isString()) {
             QString prefix = "some prefix";
             QString str = prefix;
-            QVERIFY(!reader.toString(str));
+            QVERIFY(!reader.readAndAppendToString(str));
             QVERIFY(str.startsWith(prefix));    // but may have decoded some
         } else if (reader.isByteArray()) {
             QByteArray prefix = "some prefix";
             QByteArray ba = prefix;
-            QVERIFY(!reader.toByteArray(ba));
+            QVERIFY(!reader.readAndAppendToByteArray(ba));
             QVERIFY(ba.startsWith(prefix));     // but may have decoded some
         }
         QCOMPARE(reader.lastError(), error);
 
         reader.reset();
         if (reader.isString())
-            QVERIFY(reader.toString().isNull());
+            QVERIFY(reader.readAllString().isNull());
         else
-            QVERIFY(reader.toByteArray().isNull());
+            QVERIFY(reader.readAllByteArray().isNull());
     }
 
     reader.reset();
@@ -977,12 +977,12 @@ void tst_QCborStreamReader::validation()
     if (reader.isString()) {
         QByteArray prefix = "some prefix";
         QByteArray ba = prefix;
-        QVERIFY(!reader.toUtf8String(ba));
+        QVERIFY(!reader.readAndAppendToUtf8String(ba));
         QVERIFY(ba.startsWith(prefix));     // but may have decoded some
         QCOMPARE(reader.lastError(), error);
 
         reader.reset();
-        QVERIFY(reader.toUtf8String().isNull());
+        QVERIFY(reader.readAllUtf8String().isNull());
 
         reader.reset();
         auto r = reader.readUtf8String();

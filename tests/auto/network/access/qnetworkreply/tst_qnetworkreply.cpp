@@ -559,6 +559,8 @@ private Q_SLOTS:
     void qtbug68821proxyError_data();
     void qtbug68821proxyError();
 
+    void abortAndError();
+
     // NOTE: This test must be last!
     void parentingRepliesToTheApp();
 private:
@@ -6332,14 +6334,6 @@ struct QThreadCleanup
     }
 };
 
-struct QDeleteLaterCleanup
-{
-    static inline void cleanup(QObject *o)
-    {
-        o->deleteLater();
-    }
-};
-
 #if QT_CONFIG(networkproxy)
 void tst_QNetworkReply::httpProxyCommandsSynchronous()
 {
@@ -6351,7 +6345,7 @@ void tst_QNetworkReply::httpProxyCommandsSynchronous()
     // the server thread, because the client is never returning to the
     // event loop
     QScopedPointer<QThread, QThreadCleanup> serverThread(new QThread);
-    QScopedPointer<MiniHttpServer, QDeleteLaterCleanup> proxyServer(new MiniHttpServer(responseToSend, false, serverThread.data()));
+    QScopedPointer<MiniHttpServer, QScopedPointerDeleteLater> proxyServer(new MiniHttpServer(responseToSend, false, serverThread.data()));
     QNetworkProxy proxy(QNetworkProxy::HttpProxy, "127.0.0.1", proxyServer->serverPort());
 
     manager.setProxy(proxy);
@@ -6509,7 +6503,6 @@ void tst_QNetworkReply::httpConnectionCount()
     }
 
     QVERIFY(server->listen());
-    QCoreApplication::instance()->processEvents();
 
     QUrl url("http://127.0.0.1:" + QString::number(server->serverPort()) + QLatin1Char('/'));
     if (encrypted)
@@ -6520,7 +6513,7 @@ void tst_QNetworkReply::httpConnectionCount()
         QUrl urlCopy = url;
         urlCopy.setPath(u'/' + QString::number(i)); // Differentiate the requests a bit
         QNetworkRequest request(urlCopy);
-        request.setAttribute(QNetworkRequest::Http2AllowedAttribute, http2Enabled);
+        request.setAttribute(QNetworkRequest::Http2CleartextAllowedAttribute, http2Enabled);
         QNetworkReply* reply = manager.get(request);
         reply->setParent(server.data());
         if (encrypted)
@@ -6528,26 +6521,40 @@ void tst_QNetworkReply::httpConnectionCount()
     }
 
     int pendingConnectionCount = 0;
-    QElapsedTimer timer;
-    timer.start();
 
-    while(pendingConnectionCount <= 20) {
-        QTestEventLoop::instance().enterLoop(1);
+    using namespace std::chrono_literals;
+    const auto newPendingConnection = [&server]() { return server->hasPendingConnections(); };
+    // If we have http2 enabled then the second connection will take a little
+    // longer to be established because we will wait for the first one to finish
+    // to see if we should upgrade:
+    const int rampDown = http2Enabled ? 2 : 1;
+    while (pendingConnectionCount <= 6) {
+        if (!QTest::qWaitFor(newPendingConnection, pendingConnectionCount >= rampDown ? 3s : 7s))
+            break;
         QTcpSocket *socket = server->nextPendingConnection();
-        while (socket != 0) {
-            if (pendingConnectionCount == 0) {
-                // respond to the first connection so we know to transition to HTTP/1.1 when using
-                // HTTP/2
-                socket->write(httpEmpty200Response);
+        while (socket) {
+            if (pendingConnectionCount == 0 && http2Enabled) {
+                // Respond to the first connection so we know to transition to HTTP/1.1 when using
+                // HTTP/2.
+                // Because of some internal state machinery we need to wait until the request has
+                // actually been written to the server before we can reply.
+                auto connection = std::make_shared<QMetaObject::Connection>();
+                auto replyOnRequest = [=, buffer = QByteArray()]() mutable {
+                    buffer += socket->readAll();
+                    if (!buffer.contains("\r\n\r\n"))
+                        return;
+                    socket->write(httpEmpty200Response);
+                    QObject::disconnect(*connection);
+                };
+                *connection = QObject::connect(socket, &QTcpSocket::readyRead, socket,
+                                               std::move(replyOnRequest));
+                if (socket->bytesAvailable()) // If we already have data, check it now
+                    emit socket->readyRead();
             }
             pendingConnectionCount++;
             socket->setParent(server.data());
             socket = server->nextPendingConnection();
         }
-
-        // at max. wait 10 sec
-        if (timer.elapsed() > 10000)
-            break;
     }
 
     QCOMPARE(pendingConnectionCount, 6);
@@ -8554,7 +8561,7 @@ void tst_QNetworkReply::synchronousAuthenticationCache()
     // the server thread, because the client is never returning to the
     // event loop
     QScopedPointer<QThread, QThreadCleanup> serverThread(new QThread);
-    QScopedPointer<MiniHttpServer, QDeleteLaterCleanup> server(new MiniAuthServer(serverThread.data()));
+    QScopedPointer<MiniHttpServer, QScopedPointerDeleteLater> server(new MiniAuthServer(serverThread.data()));
     server->doClose = true;
 
     //1)  URL without credentials, we are not authenticated
@@ -8693,31 +8700,33 @@ void tst_QNetworkReply::ftpAuthentication()
 void tst_QNetworkReply::emitErrorForAllReplies() // QTBUG-36890
 {
     // port 100 is not well-known and should be closed
-    QList<QUrl> urls = QList<QUrl>() << QUrl("http://localhost:100/request1")
-                                     << QUrl("http://localhost:100/request2")
-                                     << QUrl("http://localhost:100/request3");
-    QList<QNetworkReply *> replies;
-    QList<QSignalSpy *> errorSpies;
-    QList<QSignalSpy *> finishedSpies;
-    for (int a = 0; a < urls.size(); ++a) {
-        QNetworkRequest request(urls.at(a));
+    const QUrl urls[] = {
+        QUrl("http://localhost:100/request1"),
+        QUrl("http://localhost:100/request2"),
+        QUrl("http://localhost:100/request3"),
+    };
+    constexpr auto NUrls = std::size(urls);
+
+    std::unique_ptr<QNetworkReply, QScopedPointerDeleteLater> replies[NUrls];
+    std::optional<QSignalSpy> errorSpies[NUrls];
+    std::optional<QSignalSpy> finishedSpies[NUrls];
+
+    for (size_t i = 0; i < NUrls; ++i) {
+        QNetworkRequest request(urls[i]);
         QNetworkReply *reply = manager.get(request);
-        replies.append(reply);
-        QSignalSpy *errorSpy = new QSignalSpy(reply, SIGNAL(errorOccurred(QNetworkReply::NetworkError)));
-        errorSpies.append(errorSpy);
-        QSignalSpy *finishedSpy = new QSignalSpy(reply, SIGNAL(finished()));
-        finishedSpies.append(finishedSpy);
+        replies[i].reset(reply);
+        errorSpies[i].emplace(reply, SIGNAL(errorOccurred(QNetworkReply::NetworkError)));
+        finishedSpies[i].emplace(reply, SIGNAL(finished()));
         QObject::connect(reply, SIGNAL(finished()), SLOT(emitErrorForAllRepliesSlot()));
     }
+
     QTestEventLoop::instance().enterLoop(10);
     QVERIFY(!QTestEventLoop::instance().timeout());
-    for (int a = 0; a < urls.size(); ++a) {
-        QVERIFY(replies.at(a)->isFinished());
-        QCOMPARE(errorSpies.at(a)->size(), 1);
-        errorSpies.at(a)->deleteLater();
-        QCOMPARE(finishedSpies.at(a)->size(), 1);
-        finishedSpies.at(a)->deleteLater();
-        replies.at(a)->deleteLater();
+
+    for (size_t i = 0; i < NUrls; ++i) {
+        QVERIFY(replies[i]->isFinished());
+        QCOMPARE(errorSpies[i]->size(), 1);
+        QCOMPARE(finishedSpies[i]->size(), 1);
     }
 }
 
@@ -9916,6 +9925,7 @@ void tst_QNetworkReply::requestWithTimeout()
     // Manager instance remains between case runs => always reset it's transferTimeout to
     // ensure setting its transferTimeout in this case has effect
     manager.setTransferTimeout(0ms);
+    auto cleanup = qScopeGuard([this] { manager.setTransferTimeout(0ms); });
 
     MiniHttpServer server(tst_QNetworkReply::httpEmpty200Response, false);
     server.stopTransfer = true;
@@ -10375,13 +10385,20 @@ void tst_QNetworkReply::qtbug68821proxyError_data()
 
 void tst_QNetworkReply::qtbug68821proxyError()
 {
-    QTcpServer proxyServer;
-    QVERIFY(proxyServer.listen());
-    quint16 proxyPort = proxyServer.serverPort();
-    proxyServer.close();
+    auto getUnusedPort = []() -> std::optional<quint16> {
+        QTcpServer probeServer;
+        if (!probeServer.listen())
+            return std::nullopt;
+        // If we can listen on it, it was unused, and hopefully is also
+        // still unused after we stop listening.
+        return probeServer.serverPort();
+    };
+
+    auto proxyPort = getUnusedPort();
+    QVERIFY(proxyPort);
 
     QFETCH(QString, proxyHost);
-    QNetworkProxy proxy(QNetworkProxy::HttpProxy, proxyHost, proxyPort);
+    QNetworkProxy proxy(QNetworkProxy::HttpProxy, proxyHost, proxyPort.value());
 
     manager.setProxy(proxy);
 
@@ -10395,6 +10412,39 @@ void tst_QNetworkReply::qtbug68821proxyError()
     QFETCH(QNetworkReply::NetworkError, error);
     QCOMPARE(spy.count(), 1);
     QCOMPARE(spy.at(0).at(0), error);
+}
+
+void tst_QNetworkReply::abortAndError()
+{
+    const QByteArray response =
+    R"(HTTP/1.0 500 Internal Server Error
+Content-Length: 12
+Content-Type: text/plain
+
+Hello World!)"_ba;
+
+    MiniHttpServer server(response);
+
+    QNetworkAccessManager manager;
+    QNetworkRequest req(QUrl("http://127.0.0.1:" + QString::number(server.serverPort())));
+    std::unique_ptr<QNetworkReply> reply(manager.post(req, "my data goes here"_ba));
+    QSignalSpy errorSignal(reply.get(), &QNetworkReply::errorOccurred);
+    QSignalSpy finishedSignal(reply.get(), &QNetworkReply::finished);
+
+    reply->abort();
+
+    // We don't want to print this warning in this case because it is impossible
+    // for users to avoid it.
+    QTest::failOnWarning("QNetworkReplyImplPrivate::error: Internal problem, this method must only "
+                         "be called once.");
+    // Process any signals from the http thread:
+    QTest::qWait(1s);
+    if (QTest::currentTestFailed())
+        return;
+
+    QCOMPARE(finishedSignal.count(), 1);
+    QCOMPARE(errorSignal.count(), 1);
+    QCOMPARE(reply->error(), QNetworkReply::OperationCanceledError);
 }
 
 // NOTE: This test must be last testcase in tst_qnetworkreply!

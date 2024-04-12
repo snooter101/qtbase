@@ -374,7 +374,6 @@ static void qt_message(QtMsgType msgType, const QMessageLogContext &context, con
         qt_message_fatal(msgType, context, buf);
 }
 
-#undef qDebug
 /*!
     Logs a debug message specified with format \a msg. Additional
     parameters, specified by \a msg, may be used.
@@ -389,8 +388,6 @@ void QMessageLogger::debug(const char *msg, ...) const
     va_end(ap);
 }
 
-
-#undef qInfo
 /*!
     Logs an informational message specified with format \a msg. Additional
     parameters, specified by \a msg, may be used.
@@ -619,7 +616,6 @@ QDebug QMessageLogger::info(QMessageLogger::CategoryFunction catFunc) const
 
 #endif
 
-#undef qWarning
 /*!
     Logs a warning message specified with format \a msg. Additional
     parameters, specified by \a msg, may be used.
@@ -724,8 +720,6 @@ QDebug QMessageLogger::warning(QMessageLogger::CategoryFunction catFunc) const
 }
 
 #endif
-
-#undef qCritical
 
 /*!
     Logs a critical message specified with format \a msg. Additional
@@ -832,8 +826,6 @@ QDebug QMessageLogger::critical(QMessageLogger::CategoryFunction catFunc) const
 }
 
 #endif
-
-#undef qFatal
 
 /*!
     Logs a fatal message specified with format \a msg for the context \a cat.
@@ -2083,7 +2075,7 @@ void qErrnoWarning(const char *msg, ...)
 
     buf += " ("_L1 + error_string + u')';
     QMessageLogContext context;
-    qt_message_output(QtCriticalMsg, context, buf);
+    qt_message_output(QtWarningMsg, context, buf);
 }
 
 void qErrnoWarning(int code, const char *msg, ...)
@@ -2097,7 +2089,7 @@ void qErrnoWarning(int code, const char *msg, ...)
 
     buf += " ("_L1 + qt_error_string(code) + u')';
     QMessageLogContext context;
-    qt_message_output(QtCriticalMsg, context, buf);
+    qt_message_output(QtWarningMsg, context, buf);
 }
 
 /*!

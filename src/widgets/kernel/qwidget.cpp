@@ -83,6 +83,7 @@ using namespace Qt::StringLiterals;
 
 Q_LOGGING_CATEGORY(lcWidgetPainting, "qt.widgets.painting", QtWarningMsg);
 Q_LOGGING_CATEGORY(lcWidgetShowHide, "qt.widgets.showhide", QtWarningMsg);
+Q_LOGGING_CATEGORY(lcWidgetWindow, "qt.widgets.window", QtWarningMsg);
 
 #ifndef QT_NO_DEBUG_STREAM
 namespace {
@@ -1029,6 +1030,31 @@ void QWidgetPrivate::createRecursively()
     }
 }
 
+QRhi *QWidgetPrivate::rhi() const
+{
+    if (QWidgetRepaintManager *repaintManager = maybeRepaintManager())
+        return repaintManager->rhi();
+    else
+        return nullptr;
+}
+
+/*!
+    \internal
+    Returns the closest parent widget that has a QWindow window handle
+
+    \note This behavior is different from nativeParentWidget(), which
+    returns the closest parent that has a QWindow window handle with
+    a created QPlatformWindow, and hence native window (winId).
+*/
+QWidget *QWidgetPrivate::closestParentWidgetWithWindowHandle() const
+{
+    Q_Q(const QWidget);
+    QWidget *parent = q->parentWidget();
+    while (parent && !parent->windowHandle())
+        parent = parent->parentWidget();
+    return parent;
+}
+
 QWindow *QWidgetPrivate::windowHandle(WindowHandleMode mode) const
 {
     if (mode == WindowHandleMode::Direct || mode == WindowHandleMode::Closest) {
@@ -1038,6 +1064,7 @@ QWindow *QWidgetPrivate::windowHandle(WindowHandleMode mode) const
         }
     }
     if (mode == WindowHandleMode::Closest) {
+        // FIXME: Use closestParentWidgetWithWindowHandle instead
         if (auto nativeParent = q_func()->nativeParentWidget()) {
             if (auto window = nativeParent->windowHandle())
                 return window;
@@ -8430,8 +8457,7 @@ void QWidgetPrivate::setVisible(bool visible)
 
         if (!q->testAttribute(Qt::WA_WState_Hidden)) {
             q->setAttribute(Qt::WA_WState_Hidden);
-            if (q->testAttribute(Qt::WA_WState_Created))
-                hide_helper();
+            hide_helper();
         }
 
         // invalidate layout similar to updateGeometry()
@@ -10694,8 +10720,14 @@ void qSendWindowChangeToTextureChildrenRecursively(QWidget *widget, QEvent::Type
 
     for (int i = 0; i < d->children.size(); ++i) {
         QWidget *w = qobject_cast<QWidget *>(d->children.at(i));
-        if (w && !w->isWindow() && QWidgetPrivate::get(w)->textureChildSeen)
+        if (w && !w->isWindow())
             qSendWindowChangeToTextureChildrenRecursively(w, eventType);
+    }
+
+    // Notify QWidgetWindow after we've notified all child QWidgets
+    if (auto *window = d->windowHandle(QWidgetPrivate::WindowHandleMode::Direct)) {
+        QEvent e(eventType);
+        QCoreApplication::sendEvent(window, &e);
     }
 }
 
@@ -10769,7 +10801,7 @@ void QWidget::setParent(QWidget *parent, Qt::WindowFlags f)
 
     // texture-based widgets need a pre-notification when their associated top-level window changes
     // This is not under the wasCreated/newParent conditions above in order to also play nice with QDockWidget.
-    if (d->textureChildSeen && ((!parent && parentWidget()) || (parent && parent->window() != oldtlw)))
+    if ((oldtlw && oldtlw->d_func()->usesRhiFlush) && ((!parent && parentWidget()) || (parent && parent->window() != oldtlw)))
         qSendWindowChangeToTextureChildrenRecursively(this, QEvent::WindowAboutToChangeInternal);
 
     // If we get parented into another window, children will be folded
@@ -10850,7 +10882,7 @@ void QWidget::setParent(QWidget *parent, Qt::WindowFlags f)
 
     // texture-based widgets need another event when their top-level window
     // changes (more precisely, has already changed at this point)
-    if (d->textureChildSeen && oldtlw != window())
+    if ((oldtlw && oldtlw->d_func()->usesRhiFlush) && oldtlw != window())
         qSendWindowChangeToTextureChildrenRecursively(this, QEvent::WindowChangeInternal);
 
     if (!wasCreated) {
@@ -10898,10 +10930,13 @@ void QWidget::setParent(QWidget *parent, Qt::WindowFlags f)
                     recreate = true;
             }
             if (recreate) {
-                auto oldState = d->windowHandle(QWidgetPrivate::WindowHandleMode::Closest)->windowState();
+                const auto windowStateBeforeDestroy = newtlw->windowState();
+                const auto visibilityBeforeDestroy = newtlw->isVisible();
                 newtlw->destroy();
                 newtlw->create();
-                d->windowHandle(QWidgetPrivate::WindowHandleMode::Closest)->setWindowState(oldState);
+                Q_ASSERT(newtlw->windowHandle());
+                newtlw->windowHandle()->setWindowStates(windowStateBeforeDestroy);
+                QWidgetPrivate::get(newtlw)->setVisible(visibilityBeforeDestroy);
             }
         }
     }
@@ -10925,57 +10960,61 @@ void QWidgetPrivate::setParent_sys(QWidget *newparent, Qt::WindowFlags f)
 
     setWinId(0);
 
-    if (parent != newparent) {
-        QObjectPrivate::setParent_helper(newparent); //### why does this have to be done in the _sys function???
-        if (q->windowHandle()) {
-            q->windowHandle()->setFlags(f);
-            QWidget *parentWithWindow =
-                newparent ? (newparent->windowHandle() ? newparent : newparent->nativeParentWidget()) : nullptr;
-            if (parentWithWindow) {
-                QWidget *topLevel = parentWithWindow->window();
-                if ((f & Qt::Window) && topLevel && topLevel->windowHandle()) {
-                    q->windowHandle()->setTransientParent(topLevel->windowHandle());
-                    q->windowHandle()->setParent(nullptr);
-                } else {
-                    q->windowHandle()->setTransientParent(nullptr);
-                    q->windowHandle()->setParent(parentWithWindow->windowHandle());
-                }
-            } else {
-                q->windowHandle()->setTransientParent(nullptr);
-                q->windowHandle()->setParent(nullptr);
-            }
-        }
-    }
-
     if (!newparent) {
         f |= Qt::Window;
         if (parent)
             targetScreen = q->parentWidget()->window()->screen();
     }
 
+    const bool destroyWindow = (
+        // Reparenting top level to child
+        (oldFlags & Qt::Window) && !(f & Qt::Window)
+        // And we can dispose of the window
+        && wasCreated && !q->testAttribute(Qt::WA_NativeWindow)
+    );
+
+    if (parent != newparent) {
+        // Update object parent now, so we can resolve new parent window below
+        QObjectPrivate::setParent_helper(newparent);
+
+        if (q->windowHandle())
+            q->windowHandle()->setFlags(f);
+
+        // If the widget itself or any of its children have been created,
+        // we need to reparent their QWindows as well.
+        QWidget *parentWithWindow = closestParentWidgetWithWindowHandle();
+        // But if the widget is about to be destroyed we must skip the
+        // widget itself, and only reparent children.
+        if (destroyWindow)
+            reparentWidgetWindowChildren(parentWithWindow);
+        else
+            reparentWidgetWindows(parentWithWindow, f);
+    }
+
     bool explicitlyHidden = isExplicitlyHidden();
 
-    // Reparenting toplevel to child
-    if (wasCreated && !(f & Qt::Window) && (oldFlags & Qt::Window) && !q->testAttribute(Qt::WA_NativeWindow)) {
+    if (destroyWindow) {
         if (extra && extra->hasWindowContainer)
             QWindowContainer::toplevelAboutToBeDestroyed(q);
 
-        QWindow *newParentWindow = newparent->windowHandle();
-        if (!newParentWindow)
-            if (QWidget *npw = newparent->nativeParentWidget())
-                newParentWindow = npw->windowHandle();
-
-        for (QObject *child : q->windowHandle()->children()) {
-            QWindow *childWindow = qobject_cast<QWindow *>(child);
-            if (!childWindow)
-                continue;
-
-            QWidgetWindow *childWW = qobject_cast<QWidgetWindow *>(childWindow);
-            QWidget *childWidget = childWW ? childWW->widget() : nullptr;
-            if (!childWW || (childWidget && childWidget->testAttribute(Qt::WA_NativeWindow)))
-                childWindow->setParent(newParentWindow);
+        // There shouldn't be any QWindow children left, but if there
+        // are, re-parent them now, before we destroy.
+        if (!q->windowHandle()->children().isEmpty()) {
+            QWidget *parentWithWindow = closestParentWidgetWithWindowHandle();
+            QWindow *newParentWindow = parentWithWindow ? parentWithWindow->windowHandle() : nullptr;
+            for (QObject *child : q->windowHandle()->children()) {
+                if (QWindow *childWindow = qobject_cast<QWindow *>(child)) {
+                    qCWarning(lcWidgetWindow) << "Reparenting" << childWindow
+                                              << "before destroying" << this;
+                    childWindow->setParent(newParentWindow);
+                }
+            }
         }
-        q->destroy();
+
+        // We have reparented any child windows of the widget we are
+        // about to destroy to the new parent window handle, so we can
+        // safely destroy this widget without destroying sub windows.
+        q->destroy(true, false);
     }
 
     adjustFlags(f, q);
@@ -10998,6 +11037,53 @@ void QWidgetPrivate::setParent_sys(QWidget *newparent, Qt::WindowFlags f)
             q->windowHandle()->setScreen(targetScreen);
         else
             topData()->initialScreen = targetScreen;
+    }
+}
+
+void QWidgetPrivate::reparentWidgetWindows(QWidget *parentWithWindow, Qt::WindowFlags windowFlags)
+{
+    if (QWindow *window = windowHandle()) {
+        // Reparent this QWindow, and all QWindow children will follow
+        if (parentWithWindow) {
+            // The reparented widget has not updated its window flags yet,
+            // so we can't ask the widget directly. And we can't use the
+            // QWindow flags, as unlike QWidgets the QWindow flags always
+            // reflect Qt::Window, even for child windows. And we can't use
+            // QWindow::isTopLevel() either, as that depends on the parent,
+            // which we are in the process of updating. So we propagate the
+            // new flags of the reparented window from setParent_sys().
+            if (windowFlags & Qt::Window) {
+                // Top level windows can only have transient parents,
+                // and the transient parent must be another top level.
+                QWidget *topLevel = parentWithWindow->window();
+                auto *transientParent = topLevel->windowHandle();
+                Q_ASSERT(transientParent);
+                qCDebug(lcWidgetWindow) << "Setting" << window << "transient parent to" << transientParent;
+                window->setTransientParent(transientParent);
+                window->setParent(nullptr);
+            } else {
+                auto *parentWindow = parentWithWindow->windowHandle();
+                qCDebug(lcWidgetWindow) << "Reparenting" << window << "into" << parentWindow;
+                window->setTransientParent(nullptr);
+                window->setParent(parentWindow);
+            }
+        } else {
+            qCDebug(lcWidgetWindow) << "Making" << window << "top level window";
+            window->setTransientParent(nullptr);
+            window->setParent(nullptr);
+        }
+    } else {
+        reparentWidgetWindowChildren(parentWithWindow);
+    }
+}
+
+void QWidgetPrivate::reparentWidgetWindowChildren(QWidget *parentWithWindow)
+{
+    for (auto *child : std::as_const(children)) {
+        if (auto *childWidget = qobject_cast<QWidget*>(child)) {
+            auto *childPrivate = QWidgetPrivate::get(childWidget);
+            childPrivate->reparentWidgetWindows(parentWithWindow);
+        }
     }
 }
 
@@ -13205,6 +13291,24 @@ void QWidgetPrivate::setNetWmWindowTypes(bool skipIfMissing)
 #else
     Q_UNUSED(skipIfMissing);
 #endif
+}
+
+/*!
+   \internal
+   \return \c true, if a child with \param policy exists and isn't a child of \param excludeChildrenOf.
+   Return false otherwise.
+ */
+bool QWidgetPrivate::hasChildWithFocusPolicy(Qt::FocusPolicy policy, const QWidget *excludeChildrenOf) const
+{
+    Q_Q(const QWidget);
+    const QWidgetList &children = q->findChildren<QWidget *>(Qt::FindChildrenRecursively);
+    for (const auto *child : children) {
+        if (child->focusPolicy() == policy && child->isEnabled()
+            && (!excludeChildrenOf || !excludeChildrenOf->isAncestorOf(child))) {
+            return true;
+        }
+    }
+    return false;
 }
 
 #ifndef QT_NO_DEBUG_STREAM

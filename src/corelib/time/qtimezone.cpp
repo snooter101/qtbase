@@ -95,6 +95,8 @@ Q_GLOBAL_STATIC(QTimeZoneSingleton, global_tz);
 
     \brief QTimeZone identifies how a time representation relates to UTC.
 
+    \compares equality
+
     When dates and times are combined, the meaning of the result depends on how
     time is being represented. There are various international standards for
     representing time; one of these, UTC, corresponds to the traditional
@@ -463,17 +465,15 @@ QTimeZone::Data &QTimeZone::Data::operator=(QTimeZonePrivate *dptr) noexcept
 
 QTimeZone::QTimeZone(const QByteArray &ianaId)
 {
-    // Try and see if it's a CLDR UTC offset ID - just as quick by creating as
-    // by looking up.
+    // Try and see if it's a recognized UTC offset ID - just as quick by
+    // creating as by looking up.
     d = new QUtcTimeZonePrivate(ianaId);
-    // If not a CLDR UTC offset ID then try creating it with the system backend.
-    // Relies on backend not creating valid TZ with invalid name.
+    // If not recognized, try creating it with the system backend.
     if (!d->isValid()) {
         if (ianaId.isEmpty())
             d = newBackendTimeZone();
-        else if (global_tz->backend->isTimeZoneIdAvailable(ianaId))
+        else // Constructor MUST produce invalid for unsupported ID.
             d = newBackendTimeZone(ianaId);
-        // else: No such ID, avoid creating a TZ cache entry for it.
     }
     // Can also handle UTC with arbitrary (valid) offset, but only do so as
     // fall-back, since either of the above may handle it more informatively.

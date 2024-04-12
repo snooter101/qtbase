@@ -19,8 +19,7 @@
 # define TST_GL
 #endif
 
-// Never attempt Vulkan on Android, to prevent the emulator in CI from crashing.
-#if QT_CONFIG(vulkan) && !defined(Q_OS_ANDROID)
+#if QT_CONFIG(vulkan)
 # include <QVulkanInstance>
 # include <QVulkanFunctions>
 # define TST_VK
@@ -6814,9 +6813,9 @@ void tst_QRhi::halfPrecisionAttributes()
     // To avoid these errors, we pad the vertices to 8 byte stride.
     //
     static const qfloat16 vertices[] = {
-        -1.0, -1.0, 0.0, 0.0,
-        1.0, -1.0, 0.0, 0.0,
-        0.0, 1.0, 0.0, 0.0,
+        qfloat16(-1.0), qfloat16(-1.0), qfloat16(0.0), qfloat16(0.0),
+        qfloat16(1.0), qfloat16(-1.0), qfloat16(0.0), qfloat16(0.0),
+        qfloat16(0.0), qfloat16(1.0), qfloat16(0.0), qfloat16(0.0),
     };
 
     QScopedPointer<QRhiBuffer> vbuf(rhi->newBuffer(QRhiBuffer::Immutable, QRhiBuffer::VertexBuffer, sizeof(vertices)));

@@ -20,6 +20,8 @@
 #include <qplatformdefs.h>
 
 #include <algorithm>
+#include <memory>
+
 #include <errno.h>
 #include <limits.h>
 #ifndef Q_OS_INTEGRITY
@@ -783,7 +785,7 @@ public:
     QTzTimeZoneCacheEntry fetchEntry(const QByteArray &ianaId);
 
 private:
-    QTzTimeZoneCacheEntry findEntry(const QByteArray &ianaId);
+    static QTzTimeZoneCacheEntry findEntry(const QByteArray &ianaId);
     QCache<QByteArray, QTzTimeZoneCacheEntry> m_cache;
     QMutex m_mutex;
 };
@@ -980,14 +982,24 @@ QTzTimeZoneCacheEntry QTzTimeZoneCache::fetchEntry(const QByteArray &ianaId)
         return *obj;
 
     // ... or build a new entry from scratch
+
+    locker.unlock(); // don't parse files under mutex lock
+
     QTzTimeZoneCacheEntry ret = findEntry(ianaId);
-    m_cache.insert(ianaId, new QTzTimeZoneCacheEntry(ret));
+    auto ptr = std::make_unique<QTzTimeZoneCacheEntry>(ret);
+
+    locker.relock();
+    m_cache.insert(ianaId, ptr.release()); // may overwrite if another thread was faster
+    locker.unlock();
+
     return ret;
 }
 
 // Create a named time zone
 QTzTimeZonePrivate::QTzTimeZonePrivate(const QByteArray &ianaId)
 {
+    if (!isTimeZoneIdAvailable(ianaId)) // Avoid pointlessly creating cache entries
+        return;
     static QTzTimeZoneCache tzCache;
     auto entry = tzCache.fetchEntry(ianaId);
     if (entry.m_tranTimes.isEmpty() && entry.m_posixRule.isEmpty())

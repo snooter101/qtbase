@@ -1,9 +1,16 @@
 # Copyright (C) 2023 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
+if(NOT QT_BUILD_STANDALONE_TESTS AND NOT QT_BUILDING_QT)
+    cmake_minimum_required(VERSION 3.16)
+    project(tst_qcomparehelpers LANGUAGES CXX)
+    find_package(Qt6BuildInternals REQUIRED COMPONENTS STANDALONE_TEST)
+endif()
+
 qt_internal_add_test(tst_qcomparehelpers
     SOURCES
-        tst_qcomparehelpers.cpp
+        tst_qcomparehelpers.h tst_qcomparehelpers.cpp
+        wrappertypes.h
     LIBRARIES
         Qt::TestPrivate
 )
@@ -13,7 +20,8 @@ qt_internal_add_test(tst_qcomparehelpers
 if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.20" AND NOT MACOS)
     qt_internal_add_test(tst_qcomparehelpers_cpp23
         SOURCES
-            tst_qcomparehelpers.cpp
+            tst_qcomparehelpers.h tst_qcomparehelpers.cpp
+            wrappertypes.h
         DEFINES
             tst_QCompareHelpers=tst_QCompareHelpersCpp23
         LIBRARIES

@@ -40,10 +40,12 @@ private slots:
 
     void ctor();
     void callMethodTest();
+    void callMethodThrowsException();
     void callObjectMethodTest();
     void stringConvertionTest();
     void compareOperatorTests();
     void className();
+    void callStaticMethodThrowsException();
     void callStaticObjectMethodClassName();
     void callStaticObjectMethod();
     void callStaticObjectMethodById();
@@ -117,6 +119,7 @@ private slots:
 
     void callback_data();
     void callback();
+    void callStaticOverloadResolution();
 
     void cleanupTestCase();
 };
@@ -261,6 +264,15 @@ void tst_QJniObject::callMethodTest()
     }
 }
 
+void tst_QJniObject::callMethodThrowsException()
+{
+    QtJniTypes::QtJniObjectTestClass instance;
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression("java.lang.Exception"));
+    auto res = instance.callMethod<jobject>("callMethodThrowsException");
+    QVERIFY(!res.isValid());
+    QVERIFY(!QJniEnvironment().checkAndClearExceptions());
+}
+
 void tst_QJniObject::callObjectMethodTest()
 {
     const QString qString = QLatin1String("Hello, Java");
@@ -336,6 +348,15 @@ void tst_QJniObject::className()
         TestClass test;
         QCOMPARE(test.className(), testClassName);
     }
+}
+
+void tst_QJniObject::callStaticMethodThrowsException()
+{
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression("java.lang.Exception"));
+    auto res = QtJniTypes::QtJniObjectTestClass::callStaticMethod<jobject>(
+            "callStaticMethodThrowsException");
+    QVERIFY(!res.isValid());
+    QVERIFY(!QJniEnvironment().checkAndClearExceptions());
 }
 
 void tst_QJniObject::callStaticObjectMethodClassName()
@@ -2007,6 +2028,19 @@ void tst_QJniObject::callback()
         break;
     }
     QCOMPARE(result, int(parameterType));
+}
+
+// Make sure the new callStaticMethod overload taking a class, return type,
+// and argument as template parameters, doesn't break overload resolution
+// and that the class name doesn't get interpreted as the function name.
+void tst_QJniObject::callStaticOverloadResolution()
+{
+    const QString value = u"Hello World"_s;
+    QJniObject str = QJniObject::fromString(value);
+    const auto result = QJniObject::callStaticMethod<jstring, jstring>(
+            QtJniTypes::Traits<TestClass>::className(),
+            "staticEchoMethod", str.object<jstring>()).toString();
+    QCOMPARE(result, value);
 }
 
 QTEST_MAIN(tst_QJniObject)

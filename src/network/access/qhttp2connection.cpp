@@ -154,9 +154,6 @@ void QHttp2Stream::internalSendDATA()
         return m_uploadByteDevice->readPointer(requestSize, tmp) != nullptr && tmp > 0;
     };
 
-    constexpr qint32 StackBufferSize = 4096;
-    QVarLengthArray<uchar, StackBufferSize> intermediateBuffer;
-
     bool sentEND_STREAM = false;
     while (remainingWindowSize && deviceCanRead()) {
         quint32 bytesWritten = 0;
@@ -540,8 +537,9 @@ QHttp2Connection *QHttp2Connection::createDirectServerConnection(QIODevice *sock
 
 QH2Expected<QHttp2Stream *, QHttp2Connection::CreateStreamError> QHttp2Connection::createStream()
 {
-    Q_ASSERT(m_nextStreamID <= lastValidStreamID);
     Q_ASSERT(m_connectionType == Type::Client); // This overload is just for clients
+    if (m_nextStreamID > lastValidStreamID)
+        return { QHttp2Connection::CreateStreamError::StreamIdsExhausted };
     return createStreamInternal();
 }
 
@@ -551,7 +549,7 @@ QHttp2Connection::createStreamInternal()
     if (m_goingAway)
         return { QHttp2Connection::CreateStreamError::ReceivedGOAWAY };
     const quint32 streamID = m_nextStreamID;
-    if (size_t(m_maxConcurrentStreams) <= size_t(numActiveStreams()))
+    if (size_t(m_maxConcurrentStreams) <= size_t(numActiveLocalStreams()))
         return { QHttp2Connection::CreateStreamError::MaxConcurrentStreamsReached };
     m_nextStreamID += 2;
     return { createStreamInternal_impl(streamID) };
@@ -559,8 +557,9 @@ QHttp2Connection::createStreamInternal()
 
 QHttp2Stream *QHttp2Connection::createStreamInternal_impl(quint32 streamID)
 {
+    qsizetype numStreams = m_streams.size();
     QPointer<QHttp2Stream> &stream = m_streams[streamID];
-    if (stream)
+    if (numStreams == m_streams.size()) // stream already existed
         return nullptr;
     stream = new QHttp2Stream(this, streamID);
     stream->m_recvWindow = streamInitialReceiveWindowSize;
@@ -568,12 +567,32 @@ QHttp2Stream *QHttp2Connection::createStreamInternal_impl(quint32 streamID)
     return stream;
 }
 
-qsizetype QHttp2Connection::numActiveStreams() const noexcept
+qsizetype QHttp2Connection::numActiveStreamsImpl(quint32 mask) const noexcept
 {
-    return std::count_if(m_streams.cbegin(), m_streams.cend(),
-                         [](const QPointer<QHttp2Stream> &stream) {
-                             return stream && stream->state() == QHttp2Stream::State::Open;
-                         });
+    const auto shouldCount = [mask](const QPointer<QHttp2Stream> &stream) -> bool {
+        return stream && (stream->streamID() & 1) == mask;
+    };
+    return std::count_if(m_streams.cbegin(), m_streams.cend(), shouldCount);
+}
+
+/*!
+    \internal
+    The number of streams the remote peer has started that are still active.
+*/
+qsizetype QHttp2Connection::numActiveRemoteStreams() const noexcept
+{
+    const quint32 RemoteMask = m_connectionType == Type::Client ? 0 : 1;
+    return numActiveStreamsImpl(RemoteMask);
+}
+
+/*!
+    \internal
+    The number of streams we have started that are still active.
+*/
+qsizetype QHttp2Connection::numActiveLocalStreams() const noexcept
+{
+    const quint32 LocalMask = m_connectionType == Type::Client ? 1 : 0;
+    return numActiveStreamsImpl(LocalMask);
 }
 
 QHttp2Stream *QHttp2Connection::getStream(quint32 streamID) const
@@ -750,7 +769,7 @@ void QHttp2Connection::connectionError(Http2Error errorCode, const char *message
     const auto error = qt_error(errorCode);
     auto messageView = QLatin1StringView(message);
 
-    for (QHttp2Stream *stream : m_streams) {
+    for (QHttp2Stream *stream : std::as_const(m_streams)) {
         if (stream && stream->isActive())
             stream->finishWithError(error, messageView);
     }
@@ -891,12 +910,16 @@ void QHttp2Connection::handleHEADERS()
     if (streamID == connectionStreamID)
         return connectionError(PROTOCOL_ERROR, "HEADERS on 0x0 stream");
 
-    if (QPointer<QHttp2Stream> stream = m_streams.value(streamID); !stream) {
+    if (streamID > m_lastIncomingStreamID) {
         QHttp2Stream *newStream = createStreamInternal_impl(streamID);
         m_lastIncomingStreamID = streamID;
         qCDebug(qHttp2ConnectionLog, "[%p] Created new incoming stream %d", this, streamID);
         emit newIncomingStream(newStream);
-    } else if (streamWasReset(streamID)) {
+    } else if (auto it = m_streams.constFind(streamID); it == m_streams.cend()) {
+        qCDebug(qHttp2ConnectionLog, "[%p] Received HEADERS on non-existent stream %d", this,
+                streamID);
+        return connectionError(PROTOCOL_ERROR, "HEADERS on invalid stream");
+    } else if (!*it || (*it)->wasReset()) {
         qCDebug(qHttp2ConnectionLog, "[%p] Received HEADERS on reset stream %d", this, streamID);
         return connectionError(ENHANCE_YOUR_CALM, "HEADERS on invalid stream");
     }
@@ -1047,13 +1070,13 @@ void QHttp2Connection::handlePUSH_PROMISE()
         return connectionError(ENHANCE_YOUR_CALM, "PUSH_PROMISE with invalid associated stream");
 
     const auto reservedID = qFromBigEndian<quint32>(inboundFrame.dataBegin());
-    if ((reservedID & 1) || reservedID <= lastPromisedID || reservedID > lastValidStreamID)
+    if ((reservedID & 1) || reservedID <= m_lastIncomingStreamID || reservedID > lastValidStreamID)
         return connectionError(PROTOCOL_ERROR, "PUSH_PROMISE with invalid promised stream ID");
 
     auto *stream = createStreamInternal_impl(reservedID);
     if (!stream)
         return connectionError(PROTOCOL_ERROR, "PUSH_PROMISE with already active stream ID");
-    lastPromisedID = reservedID;
+    m_lastIncomingStreamID = reservedID;
     stream->setState(QHttp2Stream::State::ReservedRemote);
 
     if (!pushPromiseEnabled) {
@@ -1178,7 +1201,9 @@ void QHttp2Connection::handleWINDOW_UPDATE()
 void QHttp2Connection::handleCONTINUATION()
 {
     Q_ASSERT(inboundFrame.type() == FrameType::CONTINUATION);
-    Q_ASSERT(!continuedFrames.empty()); // HEADERS frame must be already in.
+    if (continuedFrames.empty())
+        return connectionError(PROTOCOL_ERROR,
+                               "CONTINUATION without a preceding HEADERS or PUSH_PROMISE");
 
     if (inboundFrame.streamID() != continuedFrames.front().streamID())
         return connectionError(PROTOCOL_ERROR, "CONTINUATION on invalid stream");
@@ -1232,18 +1257,27 @@ void QHttp2Connection::handleContinuedHEADERS()
         HPack::BitIStream inputStream{ hpackBlock.data(), hpackBlock.data() + hpackBlock.size() };
         if (!decoder.decodeHeaderFields(inputStream))
             return connectionError(COMPRESSION_ERROR, "HPACK decompression failed");
-    } else if (firstFrameType == FrameType::PUSH_PROMISE) {
-        // It could be a PRIORITY sent in HEADERS - already handled by this
-        // point in handleHEADERS. If it was PUSH_PROMISE (HTTP/2 8.2.1):
-        // "The header fields in PUSH_PROMISE and any subsequent CONTINUATION
-        // frames MUST be a valid and complete set of request header fields
-        // (Section 8.1.2.3) ... If a client receives a PUSH_PROMISE that does
-        // not include a complete and valid set of header fields or the :method
-        // pseudo-header field identifies a method that is not safe, it MUST
-        // respond with a stream error (Section 5.4.2) of type PROTOCOL_ERROR."
-        if (streamIt != m_streams.end())
-            (*streamIt)->sendRST_STREAM(PROTOCOL_ERROR);
-        return;
+    } else {
+        if (firstFrameType == FrameType::PUSH_PROMISE) {
+            // It could be a PRIORITY sent in HEADERS - already handled by this
+            // point in handleHEADERS. If it was PUSH_PROMISE (HTTP/2 8.2.1):
+            // "The header fields in PUSH_PROMISE and any subsequent CONTINUATION
+            // frames MUST be a valid and complete set of request header fields
+            // (Section 8.1.2.3) ... If a client receives a PUSH_PROMISE that does
+            // not include a complete and valid set of header fields or the :method
+            // pseudo-header field identifies a method that is not safe, it MUST
+            // respond with a stream error (Section 5.4.2) of type PROTOCOL_ERROR."
+            if (streamIt != m_streams.end())
+                (*streamIt)->sendRST_STREAM(PROTOCOL_ERROR);
+            return;
+        }
+
+        // We got back an empty hpack block. Now let's figure out if there was an error.
+        constexpr auto hpackBlockHasContent = [](const auto &c) { return c.hpackBlockSize() > 0; };
+        const bool anyHpackBlock = std::any_of(continuedFrames.cbegin(), continuedFrames.cend(),
+                                               hpackBlockHasContent);
+        if (anyHpackBlock) // There was hpack block data, but returned empty => it overflowed.
+            return connectionError(FRAME_SIZE_ERROR, "HEADERS frame too large");
     }
 
     if (streamIt == m_streams.end()) // No more processing without a stream from here on.

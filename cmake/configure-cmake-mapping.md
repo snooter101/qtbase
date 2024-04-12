@@ -8,6 +8,7 @@ The following table describes the mapping of configure options to CMake argument
 | -extprefix /opt/qt6                   | -DCMAKE_STAGING_PREFIX=/opt/qt6                   |                                                                 |
 | -bindir <dir>                         | -DINSTALL_BINDIR=<dir>                            | similar for -headerdir -libdir and so on                        |
 | -hostdatadir <dir>                    | -DINSTALL_MKSPECSDIR=<dir>                        |                                                                 |
+| -qt-host-path <dir>                   | -DQT_HOST_PATH=<dir>                              |                                                                 |
 | -help                                 | n/a                                               | Handled by configure[.bat].                                     |
 | -verbose                              | --log-level=STATUS                                | Sets the CMake log level to STATUS. The default one is NOTICE.  |
 | -continue                             |                                                   |                                                                 |
@@ -93,6 +94,8 @@ The following table describes the mapping of configure options to CMake argument
 | -android-javac-source                 | -DQT_ANDROID_JAVAC_SOURCE=7                       | Set the javac build source version.                             |
 | -android-javac-target                 | -DQT_ANDROID_JAVAC_TARGET=7                       | Set the javac build target version.                             |
 | -skip <repo>,...,<repo_n>             | -DBUILD_<repo>=OFF                                |                                                                 |
+| -skip-tests <repo>,...,<repo_n>       | -DQT_BUILD_TESTS_PROJECT_<repo>=OFF               |                                                                 |
+| -skip-examples <repo>,...,<repo_n>    | -DQT_BUILD_EXAMPLES_PROJECT_<repo>=OFF            |                                                                 |
 | -submodules <repo>,...,<repo_n>       | -DQT_BUILD_SUBMODULES=<repo>;...;<repo>            |                                                                 |
 | -make <part>                          | -DQT_BUILD_TESTS=ON                               | A way to turn on tools explicitly is missing. If tests/examples |
 |                                       | -DQT_BUILD_EXAMPLES=ON                            | are enabled, you can disable their building as part of the      |
@@ -160,8 +163,8 @@ The following table describes the mapping of configure options to CMake argument
 | -xkbcommon                            | -DFEATURE_xkbcommon=ON                            |                                                                 |
 | -gif                                  | -DFEATURE_gif=ON                                  |                                                                 |
 | -ico                                  | -DFEATURE_ico=ON                                  |                                                                 |
-| -libpng                               | -DFEATURE_png=ON                               |                                                                 |
-| -libjpeg                              | -DFEATURE_jpeg=ON                              |                                                                 |
+| -libpng                               | -DFEATURE_png=ON                                  |                                                                 |
+| -libjpeg                              | -DFEATURE_jpeg=ON                                 |                                                                 |
 | -sql-<driver>                         | -DFEATURE_sql_<driver>=ON                         |                                                                 |
 | -sqlite [qt/system]                   | -DFEATURE_system_sqlite=OFF/ON                    |                                                                 |
 | -disable-deprecated-up-to <hex_version> | -DQT_DISABLE_DEPRECATED_UP_TO=<hex_version>     |                                                                 |

@@ -292,13 +292,19 @@ bool QRhiD3D12::create(QRhi::Flags flags)
         for (int adapterIndex = 0; dxgiFactory->EnumAdapters1(UINT(adapterIndex), &adapter) != DXGI_ERROR_NOT_FOUND; ++adapterIndex) {
             DXGI_ADAPTER_DESC1 desc;
             adapter->GetDesc1(&desc);
-            adapter->Release();
             if (desc.AdapterLuid.LowPart == adapterLuid.LowPart
                     && desc.AdapterLuid.HighPart == adapterLuid.HighPart)
             {
+                activeAdapter = adapter;
                 QRhiD3D::fillDriverInfo(&driverInfoStruct, desc);
                 break;
+            } else {
+                adapter->Release();
             }
+        }
+        if (!activeAdapter) {
+            qWarning("No adapter");
+            return false;
         }
         qCDebug(QRHI_LOG_INFO, "Using imported device %p", dev);
     }
@@ -503,8 +509,10 @@ void QRhiD3D12::destroy()
     cbvSrvUavPool.destroy();
 
     for (int i = 0; i < QD3D12_FRAMES_IN_FLIGHT; ++i) {
-        cmdAllocators[i]->Release();
-        cmdAllocators[i] = nullptr;
+        if (cmdAllocators[i]) {
+            cmdAllocators[i]->Release();
+            cmdAllocators[i] = nullptr;
+        }
     }
 
     if (fullFenceEvent) {
@@ -1598,6 +1606,10 @@ QRhi::FrameOpResult QRhiD3D12::endFrame(QRhiSwapChain *swapChain, QRhi::EndFrame
                 && (swapChainD->swapChainFlags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING))
         {
             presentFlags |= DXGI_PRESENT_ALLOW_TEARING;
+        }
+        if (!swapChainD->swapChain) {
+            qWarning("Failed to present, no swapchain");
+            return QRhi::FrameOpError;
         }
         HRESULT hr = swapChainD->swapChain->Present(swapChainD->swapInterval, presentFlags);
         if (hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET) {
@@ -6231,7 +6243,7 @@ bool QD3D12SwapChain::createOrResize()
             if (!dcompTarget) {
                 hr = rhiD->dcompDevice->CreateTargetForHwnd(hwnd, true, &dcompTarget);
                 if (FAILED(hr)) {
-                    qWarning("Failed to create Direct Compsition target for the window: %s",
+                    qWarning("Failed to create Direct Composition target for the window: %s",
                              qPrintable(QSystemError::windowsComString(hr)));
                 }
             }
@@ -6328,7 +6340,11 @@ bool QD3D12SwapChain::createOrResize()
             }
         }
         if (FAILED(hr)) {
-            qWarning("Failed to create D3D12 swapchain: %s", qPrintable(QSystemError::windowsComString(hr)));
+            qWarning("Failed to create D3D12 swapchain: %s"
+                     " (Width=%u Height=%u Format=%u SampleCount=%u BufferCount=%u Scaling=%u SwapEffect=%u Stereo=%u)",
+                     qPrintable(QSystemError::windowsComString(hr)),
+                     desc.Width, desc.Height, UINT(desc.Format), desc.SampleDesc.Count,
+                     desc.BufferCount, UINT(desc.Scaling), UINT(desc.SwapEffect), UINT(desc.Stereo));
             return false;
         }
 

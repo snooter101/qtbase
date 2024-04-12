@@ -16,11 +16,9 @@ import android.view.ViewGroup;
 import java.security.InvalidParameterException;
 import java.util.ArrayList;
 
-// TODO this should not need to extend QtLayout, a simple FrameLayout/ViewGroup should do
-// QTBUG-121516
 // Base class for embedding QWindow into native Android view hierarchy. Extend to implement
 // the creation of appropriate window to embed.
-abstract class QtView extends QtLayout {
+abstract class QtView extends ViewGroup {
     private final static String TAG = "QtView";
 
     public interface QtWindowListener {
@@ -40,6 +38,8 @@ abstract class QtView extends QtLayout {
     abstract protected void createWindow(long parentWindowRef);
 
     private static native void setWindowVisible(long windowReference, boolean visible);
+    private static native void resizeWindow(long windowReference,
+                                            int x, int y, int width, int height);
 
     /**
      * Create QtView for embedding a QWindow. Instantiating a QtView will load the Qt libraries
@@ -59,6 +59,22 @@ abstract class QtView extends QtLayout {
         QtEmbeddedLoader loader = new QtEmbeddedLoader(context);
         m_delegate = QtEmbeddedDelegateFactory.create((Activity)context);
         loader.setMainLibraryName(appLibName);
+        addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+            @Override
+            public void onLayoutChange(View v, int left, int top, int right, int bottom,
+                                       int oldLeft, int oldTop, int oldRight, int oldBottom)  {
+                if (m_windowReference != 0L) {
+                    final int oldWidth = oldRight - oldLeft;
+                    final int oldHeight = oldBottom - oldTop;
+                    final int newWidth = right - left;
+                    final int newHeight = bottom - top;
+                    if (oldWidth != newWidth || oldHeight != newHeight || left != oldLeft ||
+                        top != oldTop) {
+                            resizeWindow(m_windowReference, left, top, newWidth, newHeight);
+                    }
+                }
+            }
+        });
         loader.loadQtLibraries();
         // Start Native Qt application
         m_delegate.startNativeApplication(loader.getApplicationParameters(),
@@ -78,6 +94,43 @@ abstract class QtView extends QtLayout {
         destroyWindow();
         m_delegate.setView(null);
     }
+
+    @Override
+    public void onLayout(boolean changed, int l, int t, int r, int b) {
+        if (m_window != null)
+            m_window.layout(0 /* left */, 0 /* top */, r - l /* right */, b - t /* bottom */);
+    }
+
+    @Override
+    protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec)
+    {
+        measureChildren(widthMeasureSpec, heightMeasureSpec);
+
+        final int count = getChildCount();
+
+        int maxHeight = 0;
+        int maxWidth = 0;
+
+        // Find out how big everyone wants to be
+        measureChildren(widthMeasureSpec, heightMeasureSpec);
+
+        // Find rightmost and bottom-most child
+        for (int i = 0; i < count; i++) {
+            View child = getChildAt(i);
+            if (child.getVisibility() != GONE) {
+                maxWidth = Math.max(maxWidth, child.getMeasuredWidth());
+                maxHeight = Math.max(maxHeight, child.getMeasuredHeight());
+            }
+        }
+
+        // Check against minimum height and width
+        maxHeight = Math.max(maxHeight, getSuggestedMinimumHeight());
+        maxWidth = Math.max(maxWidth, getSuggestedMinimumWidth());
+
+        setMeasuredDimension(resolveSize(maxWidth, widthMeasureSpec),
+                resolveSize(maxHeight, heightMeasureSpec));
+    }
+
 
     public void setQtWindowListener(QtWindowListener listener) {
         m_windowListener = listener;
@@ -109,10 +162,10 @@ abstract class QtView extends QtLayout {
             @Override
             public void run() {
                 m_window = window;
-                m_window.getLayout().setLayoutParams(new QtLayout.LayoutParams(
-                                                            ViewGroup.LayoutParams.MATCH_PARENT,
-                                                            ViewGroup.LayoutParams.MATCH_PARENT));
-                addView(m_window.getLayout(), 0);
+                m_window.setLayoutParams(new ViewGroup.LayoutParams(
+                                            ViewGroup.LayoutParams.MATCH_PARENT,
+                                            ViewGroup.LayoutParams.MATCH_PARENT));
+                addView(m_window, 0);
                 // Call show window + parent
                 setWindowVisible(true);
                 if (m_windowListener != null)
@@ -126,5 +179,9 @@ abstract class QtView extends QtLayout {
         if (m_windowReference != 0L)
             QtEmbeddedDelegate.deleteWindow(m_windowReference);
         m_windowReference = 0L;
+    }
+
+    QtWindow getQtWindow() {
+        return m_window;
     }
 }

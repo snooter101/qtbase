@@ -447,20 +447,34 @@ static int oldButton(int button)
 
 int QMessageBoxPrivate::execReturnCode(QAbstractButton *button)
 {
-    int ret = buttonBox->standardButton(button);
-    if (ret == QMessageBox::NoButton) {
-        ret = customButtonList.indexOf(button); // if button == 0, correctly sets ret = -1
-    } else if (compatMode) {
-        ret = oldButton(ret);
+    if (int standardButton = buttonBox->standardButton(button)) {
+        // When using a QMessageBox with standard buttons, the return
+        // code is a StandardButton value indicating the standard button
+        // that was clicked.
+        if (compatMode)
+            return oldButton(standardButton);
+        else
+            return standardButton;
+    } else {
+        // When using QMessageBox with custom buttons, the return code
+        // is an opaque value, and the user is expected to use clickedButton()
+        // to determine which button was clicked. We make sure to keep the opaque
+        // value out of the QDialog::DialogCode range, so we can distinguish them.
+        auto customButtonIndex = customButtonList.indexOf(button);
+        if (customButtonIndex >= 0)
+            return QDialog::DialogCode::Accepted + customButtonIndex + 1;
+        else
+            return customButtonIndex; // Not found, return -1
     }
-    return ret;
 }
 
 int QMessageBoxPrivate::dialogCode() const
 {
     Q_Q(const QMessageBox);
 
-    if (clickedButton) {
+    if (rescode <= QDialog::Accepted) {
+        return rescode;
+    } else if (clickedButton) {
         switch (q->buttonRole(clickedButton)) {
         case QMessageBox::AcceptRole:
         case QMessageBox::YesRole:
@@ -2022,7 +2036,7 @@ void QMessageBox::aboutQt(QWidget *parent, const QString &title)
         "<p>Qt and the Qt logo are trademarks of The Qt Company Ltd.</p>"
         "<p>Qt is The Qt Company Ltd product developed as an open source "
         "project. See <a href=\"http://%3/\">%3</a> for more information.</p>"
-        ).arg(QLatin1String(QT_COPYRIGHT_YEAR),
+        ).arg(QString(),
               QStringLiteral("qt.io/licensing"),
               QStringLiteral("qt.io"));
     QMessageBox *msgBox = new QMessageBox(parent);
@@ -2768,6 +2782,7 @@ QPixmap QMessageBoxPrivate::standardIcon(QMessageBox::Icon icon, QMessageBox *mb
         break;
     case QMessageBox::Question:
         tmpIcon = style->standardIcon(QStyle::SP_MessageBoxQuestion, nullptr, mb);
+        break;
     default:
         break;
     }
@@ -2783,9 +2798,14 @@ void QMessageBoxPrivate::initHelper(QPlatformDialogHelper *h)
     auto *messageDialogHelper = static_cast<QPlatformMessageDialogHelper *>(h);
     QObjectPrivate::connect(messageDialogHelper, &QPlatformMessageDialogHelper::clicked,
                             this, &QMessageBoxPrivate::helperClicked);
+    // Forward state via lambda, so that we can handle addition and removal
+    // of checkbox via setCheckBox() after initializing helper.
     QObject::connect(messageDialogHelper, &QPlatformMessageDialogHelper::checkBoxStateChanged,
-                     checkbox, &QCheckBox::setCheckState);
-
+        q_ptr, [this](Qt::CheckState state) {
+            if (checkbox)
+                checkbox->setCheckState(state);
+        }
+    );
     messageDialogHelper->setOptions(options);
 }
 

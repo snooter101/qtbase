@@ -551,6 +551,12 @@ qt_feature("rpath" PUBLIC
     CONDITION BUILD_SHARED_LIBS AND UNIX AND NOT WIN32 AND NOT ANDROID
 )
 qt_feature_config("rpath" QMAKE_PUBLIC_QT_CONFIG)
+qt_feature("elf_private_full_version" PRIVATE
+    LABEL "Use Qt's full version number in ELF version symbols"
+    AUTODETECT OFF
+    CONDITION BUILD_SHARED_LIBS AND UNIX AND NOT APPLE
+)
+qt_feature_config("elf_private_full_version" QMAKE_PRIVATE_QT_CONFIG)
 qt_feature("force_asserts" PUBLIC
     LABEL "Force assertions"
     AUTODETECT OFF
@@ -632,13 +638,9 @@ qt_feature_config("c++2a" QMAKE_PUBLIC_QT_CONFIG)
 qt_feature("c++2b" PUBLIC
     LABEL "C++2b"
     AUTODETECT OFF
-)
-qt_feature_config("c++2b" QMAKE_PUBLIC_QT_CONFIG)
-qt_feature("c++2b" PUBLIC
-    LABEL "C++2b"
-    AUTODETECT FALSE
     CONDITION QT_FEATURE_cxx20 AND (CMAKE_VERSION VERSION_GREATER_EQUAL "3.20") AND TEST_cxx2b
 )
+qt_feature_config("c++2b" QMAKE_PUBLIC_QT_CONFIG)
 qt_feature("precompile_header"
     LABEL "Using precompiled headers"
     CONDITION BUILD_WITH_PCH AND TEST_precompile_header
@@ -1268,16 +1270,17 @@ https://github.com/llvm/llvm-project/issues/53520
 ]=]
         )
     else()
+        string(CONCAT error_message
+            "x86 intrinsics support missing. Check your compiler settings.\n"
+            "If this is an error, report at https://bugreports.qt.io with your compiler ID and "
+            "version, and this output:\n"
+            "\n"
+            "${TEST_x86intrin_OUTPUT}"
+        )
         qt_configure_add_report_entry(
             TYPE ERROR
             CONDITION (NOT QT_FEATURE_x86intrin)
-            MESSAGE [========[
-x86 intrinsics support missing. Check your compiler settings. If this is an
-error, report at https://bugreports.qt.io with your compiler ID and version,
-and this output:
-
-${TEST_x86intrin_OUTPUT}
-]========]
+            MESSAGE "${error_message}"
         )
     endif()
 endif()
@@ -1304,8 +1307,7 @@ qt_extra_definition("QT_VERSION_MAJOR" ${PROJECT_VERSION_MAJOR} PUBLIC)
 qt_extra_definition("QT_VERSION_MINOR" ${PROJECT_VERSION_MINOR} PUBLIC)
 qt_extra_definition("QT_VERSION_PATCH" ${PROJECT_VERSION_PATCH} PUBLIC)
 
-qt_extra_definition("QT_COPYRIGHT" \"${QT_COPYRIGHT}\" PRIVATE)
-qt_extra_definition("QT_COPYRIGHT_YEAR" \"${QT_COPYRIGHT_YEAR}\" PRIVATE)
+qt_extra_definition("QT_COPYRIGHT" \"${QT_COPYRIGHT}\" PUBLIC)
 
 qt_configure_add_report_entry(
     TYPE WARNING

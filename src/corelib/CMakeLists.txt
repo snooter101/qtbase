@@ -99,6 +99,7 @@ qt_internal_add_module(Core
         global/q20chrono.h
         global/q20functional.h
         global/q20iterator.h
+        global/q20map.h
         global/q20memory.h
         global/q20type_traits.h
         global/q20vector.h
@@ -326,7 +327,6 @@ qt_internal_add_module(Core
         text/qstringconverter.cpp # enum Data
         tools/qcryptographichash.cpp # KeccakNISTInterface/Final
         io/qdebug.cpp # undef qDebug
-        io/qsettings.cpp # Space (also in qjsonparser.cpp)
     NO_PCH_SOURCES
         compat/removed_api.cpp
         global/qsimd.cpp
@@ -992,7 +992,7 @@ qt_internal_extend_target(Core CONDITION QT_FEATURE_filesystemiterator AND WIN32
 qt_internal_extend_target(Core CONDITION QT_FEATURE_process AND UNIX
     SOURCES
         ../3rdparty/forkfd/forkfd.h
-        io/forkfd_qt.cpp
+        io/forkfd_qt.c
     INCLUDE_DIRECTORIES
         ../3rdparty/forkfd
 )

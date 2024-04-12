@@ -602,7 +602,10 @@ function(_qt_internal_disable_autorcc_zstd_when_not_supported target)
             AND DEFINED QT_FEATURE_zstd
             AND NOT QT_FEATURE_zstd
             AND NOT QT_NO_AUTORCC_ZSTD)
-        set_property(TARGET "${target}" APPEND PROPERTY AUTORCC_OPTIONS "--no-zstd")
+        get_target_property(target_type ${target} TYPE)
+        if(NOT target_type STREQUAL "INTERFACE_LIBRARY")
+            set_property(TARGET "${target}" APPEND PROPERTY AUTORCC_OPTIONS "--no-zstd")
+        endif()
     endif()
 endfunction()
 
@@ -2014,7 +2017,7 @@ function(__qt_internal_generate_init_resource_source_file out_var target resourc
 
     # Gets replaced in the template
     __qt_internal_sanitize_resource_name(RESOURCE_NAME "${resource_name}")
-    set(resource_init_path "${CMAKE_CURRENT_BINARY_DIR}/.rcc/qrc_${resource_name}_init.cpp")
+    set(resource_init_path "${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/qrc_${resource_name}_init.cpp")
 
     configure_file("${template_file}" "${resource_init_path}" @ONLY)
 
@@ -2208,7 +2211,7 @@ function(_qt_internal_process_resource target resourceName)
         endif()
         return()
     endif()
-    set(generatedResourceFile "${CMAKE_CURRENT_BINARY_DIR}/.rcc/${resourceName}.qrc")
+    set(generatedResourceFile "${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/${resourceName}.qrc")
     _qt_internal_expose_source_file_to_ide(${target} ${generatedResourceFile})
     set_source_files_properties(${generatedResourceFile} PROPERTIES GENERATED TRUE)
 
@@ -2305,9 +2308,9 @@ function(_qt_internal_process_resource target resourceName)
             endif()
         endif()
     elseif(rcc_BIG_RESOURCES)
-        set(generatedOutfile "${CMAKE_CURRENT_BINARY_DIR}/.rcc/qrc_${resourceName}_tmp.cpp")
+        set(generatedOutfile "${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/qrc_${resourceName}_tmp.cpp")
     else()
-        set(generatedOutfile "${CMAKE_CURRENT_BINARY_DIR}/.rcc/qrc_${resourceName}.cpp")
+        set(generatedOutfile "${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/qrc_${resourceName}.cpp")
     endif()
 
     set(pass_msg)
@@ -2362,7 +2365,7 @@ function(_qt_internal_process_resource target resourceName)
     if(rcc_BIG_RESOURCES)
         set(pass1OutputFile ${generatedOutfile})
         set(generatedOutfile
-            "${CMAKE_CURRENT_BINARY_DIR}/.rcc/qrc_${resourceName}${CMAKE_CXX_OUTPUT_EXTENSION}")
+            "${CMAKE_CURRENT_BINARY_DIR}/.qt/rcc/qrc_${resourceName}${CMAKE_CXX_OUTPUT_EXTENSION}")
         _qt_internal_add_rcc_pass2(
             RESOURCE_NAME ${resourceName}
             RCC_OPTIONS ${rccArgsAllPasses}
@@ -2868,7 +2871,7 @@ function(_qt_internal_setup_deploy_support)
                 DIRECTORY [[${CMAKE_SOURCE_DIR}]]
                 CALL _qt_internal_write_target_deploy_info [[${targets_file}]])"
         )
-        set_property(TARGET ${target} PROPERTY _qt_deploy_support_files "${targets_file}")
+        _qt_internal_add_deploy_support("${targets_file}")
     endif()
 
     # Make sure to look under the Qt bin dir with find_program, rather than randomly picking up
@@ -2980,7 +2983,30 @@ function(_qt_internal_setup_deploy_support)
     else()
         set(qt_paths_ext "")
     endif()
-    set(target_qtpaths_path "${QT6_INSTALL_PREFIX}/${QT6_INSTALL_BINS}/qtpaths${qt_paths_ext}")
+
+
+
+    set(target_qtpaths_path "")
+    set(qtpaths_prefix "${QT6_INSTALL_PREFIX}/${QT6_INSTALL_BINS}")
+    get_property(qt_major_version TARGET "${target}" PROPERTY INTERFACE_QT_MAJOR_VERSION)
+    if(qt_major_version)
+        set(target_qtpaths_with_major_version_path
+            "${qtpaths_prefix}/qtpaths${qt_major_version}${qt_paths_ext}")
+        if(EXISTS "${target_qtpaths_with_major_version_path}")
+            set(target_qtpaths_path "${target_qtpaths_with_major_version_path}")
+        endif()
+    endif()
+
+    if(NOT target_qtpaths_path)
+        set(target_qtpaths_path_without_version "${qtpaths_prefix}/qtpaths${qt_paths_ext}")
+        if(EXISTS "${target_qtpaths_path_without_version}")
+            set(target_qtpaths_path "${target_qtpaths_path_without_version}")
+        endif()
+    endif()
+
+    if(NOT target_qtpaths_path)
+        message(DEBUG "No qtpaths executable found for deployment purposes.")
+    endif()
 
     file(GENERATE OUTPUT "${QT_DEPLOY_SUPPORT}" CONTENT
 "cmake_minimum_required(VERSION 3.16...3.21)
@@ -3043,7 +3069,7 @@ set(__QT_DEPLOY_QT_DEBUG_POSTFIX \"${QT6_DEBUG_POSTFIX}\")
 
 # Define the CMake commands to be made available during deployment.
 set(__qt_deploy_support_files
-    \"$<JOIN:$<TARGET_PROPERTY:${target},_qt_deploy_support_files>,\"
+    \"$<JOIN:$<TARGET_GENEX_EVAL:${target},$<TARGET_PROPERTY:${target},_qt_deploy_support_files>>,\"
     \">\"
 )
 foreach(__qt_deploy_support_file IN LISTS __qt_deploy_support_files)
@@ -3070,6 +3096,121 @@ function(_qt_internal_write_target_deploy_info out_file)
         endif()
     endforeach()
     file(GENERATE OUTPUT "${out_file}" CONTENT "${content}")
+endfunction()
+
+function(_qt_internal_is_examples_deployment_supported_in_current_config out_var out_var_reason)
+    # Deployment API doesn't work when examples / tests are built in-tree of a prefix qt build.
+    if(QT_BUILDING_QT AND QT_WILL_INSTALL AND NOT QT_INTERNAL_BUILD_STANDALONE_PARTS)
+        set(deployment_supported FALSE)
+        set(not_supported_reason "PREFIX_BUILD")
+    else()
+        set(deployment_supported TRUE)
+        set(not_supported_reason "")
+    endif()
+
+    set(${out_var} "${deployment_supported}" PARENT_SCOPE)
+    set(${out_var_reason} "${not_supported_reason}" PARENT_SCOPE)
+endfunction()
+
+function(_qt_internal_should_skip_deployment_api out_var out_var_reason)
+    set(skip_deployment FALSE)
+    _qt_internal_is_examples_deployment_supported_in_current_config(
+        deployment_supported
+        not_supported_reason
+    )
+
+    # Allow opting out of deployment, so that we can add deployment api to all our examples,
+    # but only run it in the CI for a select few, to avoid the overhead of deploying all examples.
+    if(QT_INTERNAL_SKIP_DEPLOYMENT OR (NOT deployment_supported))
+        set(skip_deployment TRUE)
+    endif()
+
+    set(reason "")
+    if(NOT deployment_supported)
+        set(reason "${not_supported_reason}")
+    elseif(QT_INTERNAL_SKIP_DEPLOYMENT)
+        set(reason "SKIP_REQUESTED")
+    endif()
+
+    set(${out_var} "${skip_deployment}" PARENT_SCOPE)
+    set(${out_var_reason} "${reason}" PARENT_SCOPE)
+endfunction()
+
+function(_qt_internal_should_skip_post_build_deployment_api out_var out_var_reason)
+    set(skip_deployment FALSE)
+    set(deployment_supported TRUE)
+
+    # Allow opting out of deployment, so that we can add deployment api to all our examples,
+    # but only run it in the CI for a select few, to avoid the overhead of deploying all examples.
+    if(QT_INTERNAL_SKIP_DEPLOYMENT OR (NOT deployment_supported))
+        set(skip_deployment TRUE)
+    endif()
+
+    set(reason "")
+    if(NOT deployment_supported)
+        set(reason "REASON_UNSPECIFIED")
+    elseif(QT_INTERNAL_SKIP_DEPLOYMENT)
+        set(reason "SKIP_REQUESTED")
+    endif()
+
+    set(${out_var} "${skip_deployment}" PARENT_SCOPE)
+    set(${out_var_reason} "${reason}" PARENT_SCOPE)
+endfunction()
+
+# Generate a deploy script that does nothing aside from showing a warning message.
+# The warning can be hidden by setting the QT_INTERNAL_HIDE_NO_OP_DEPLOYMENT_WARNING variable.
+function(_qt_internal_generate_no_op_deploy_script)
+    set(no_value_options
+    )
+    set(single_value_options
+        FUNCTION_NAME
+        NAME
+        OUTPUT_SCRIPT
+        SKIP_REASON
+        TARGET
+    )
+    set(multi_value_options
+    )
+
+    cmake_parse_arguments(PARSE_ARGV 0 arg
+        "${no_value_options}" "${single_value_options}" "${multi_value_options}"
+    )
+
+    if(NOT arg_OUTPUT_SCRIPT)
+        message(FATAL_ERROR "No OUTPUT_SCRIPT option specified")
+    endif()
+    if(NOT arg_FUNCTION_NAME)
+        message(FATAL_ERROR "No FUNCTION_NAME option specified")
+    endif()
+
+    set(generate_args "")
+    if(arg_NAME)
+        list(APPEND generate_args NAME "${arg_NAME}")
+    endif()
+    if(arg_TARGET)
+        list(APPEND generate_args TARGET "${arg_TARGET}")
+    endif()
+
+    set(function_name "${arg_FUNCTION_NAME}")
+
+    # The empty space is required, otherwise
+    set(content "
+message(DEBUG \"Running no-op deployment script because QT_INTERNAL_SKIP_DEPLOYMENT was ON.\")
+")
+    if(NOT QT_INTERNAL_HIDE_NO_OP_DEPLOYMENT_WARNING AND arg_SKIP_REASON STREQUAL "PREFIX_BUILD")
+        set(content "
+message(STATUS \"${function_name}(TARGET ${arg_TARGET}) is a no-op for prefix \"
+\"non-standalone builds due to various issues. Consider using a -no-prefix build \"
+\"or qt-internal-configure-tests or qt-internal-configure-examples if you want deployment to run.\")
+")
+    endif()
+
+    qt6_generate_deploy_script(
+        ${generate_args}
+        OUTPUT_SCRIPT deploy_script
+        CONTENT "${content}")
+
+    set("${arg_OUTPUT_SCRIPT}" "${deploy_script}" PARENT_SCOPE)
 endfunction()
 
 # We basically mirror CMake's policy setup
@@ -3140,10 +3281,10 @@ macro(qt6_standard_project_setup)
         set(__qt_sps_args_single
             REQUIRES
             SUPPORTS_UP_TO
-            I18N_NATIVE_LANGUAGE
+            I18N_SOURCE_LANGUAGE
         )
         set(__qt_sps_args_multi
-            I18N_LANGUAGES
+            I18N_TRANSLATED_LANGUAGES
         )
         cmake_parse_arguments(__qt_sps_arg
             "${__qt_sps_args_option}"
@@ -3257,11 +3398,15 @@ macro(qt6_standard_project_setup)
         source_group("Source Files/Generated" REGULAR_EXPRESSION "(_metatypes\\.json)$")
 
         # I18N support.
-        if(DEFINED __qt_sps_arg_I18N_LANGUAGES AND NOT DEFINED QT_I18N_LANGUAGES)
-            set(QT_I18N_LANGUAGES ${__qt_sps_arg_I18N_LANGUAGES})
+        if(DEFINED __qt_sps_arg_I18N_TRANSLATED_LANGUAGES
+                AND NOT DEFINED QT_I18N_TRANSLATED_LANGUAGES)
+            set(QT_I18N_TRANSLATED_LANGUAGES ${__qt_sps_arg_I18N_TRANSLATED_LANGUAGES})
         endif()
-        if(DEFINED __qt_sps_arg_I18N_NATIVE_LANGUAGE AND NOT DEFINED QT_I18N_NATIVE_LANGUAGE)
-            set(QT_I18N_NATIVE_LANGUAGE ${__qt_sps_arg_I18N_NATIVE_LANGUAGE})
+        if(NOT DEFINED __qt_sps_arg_I18N_SOURCE_LANGUAGE)
+            set(__qt_sps_arg_I18N_SOURCE_LANGUAGE en)
+        endif()
+        if(NOT DEFINED QT_I18N_SOURCE_LANGUAGE)
+            set(QT_I18N_SOURCE_LANGUAGE ${__qt_sps_arg_I18N_SOURCE_LANGUAGE})
         endif()
     endif()
 endmacro()
@@ -3444,6 +3589,9 @@ function(qt6_generate_deploy_app_script)
         message(FATAL_ERROR "OUTPUT_SCRIPT must be specified")
     endif()
 
+    get_target_property(is_bundle ${arg_TARGET} MACOSX_BUNDLE)
+
+    set(unsupported_platform_extra_message "")
     if(QT6_IS_SHARED_LIBS_BUILD)
         set(qt_build_type_string "shared Qt libs")
     else()
@@ -3452,6 +3600,12 @@ function(qt6_generate_deploy_app_script)
 
     if(CMAKE_CROSSCOMPILING)
         string(APPEND qt_build_type_string ", cross-compiled")
+    endif()
+
+    if(NOT is_bundle)
+        string(APPEND qt_build_type_string ", non-bundle app")
+        set(unsupported_platform_extra_message
+            "Executable targets have to be app bundles to use this command on Apple platforms.")
     endif()
 
     set(generate_args
@@ -3474,15 +3628,16 @@ function(qt6_generate_deploy_app_script)
         endif()
     endforeach()
 
-    if(APPLE AND NOT IOS AND QT6_IS_SHARED_LIBS_BUILD)
-        # TODO: Handle non-bundle applications if possible.
-        get_target_property(is_bundle ${arg_TARGET} MACOSX_BUNDLE)
-        if(NOT is_bundle)
-            message(FATAL_ERROR
-                "Executable targets have to be app bundles to use this command "
-                "on Apple platforms."
-            )
-        endif()
+    _qt_internal_should_skip_deployment_api(skip_deployment skip_reason)
+    if(skip_deployment)
+        _qt_internal_generate_no_op_deploy_script(
+            FUNCTION_NAME "qt6_generate_deploy_app_script"
+            SKIP_REASON "${skip_reason}"
+            ${generate_args}
+        )
+    elseif(APPLE AND NOT IOS AND QT6_IS_SHARED_LIBS_BUILD AND is_bundle)
+        # TODO: Consider handling non-bundle applications in the future using the generic cmake
+        # runtime dependency feature.
         qt6_generate_deploy_script(${generate_args}
             CONTENT "
 qt6_deploy_runtime_dependencies(
@@ -3511,19 +3666,22 @@ ${common_deploy_args})
 
     elseif(NOT arg_NO_UNSUPPORTED_PLATFORM_ERROR AND NOT QT_INTERNAL_NO_UNSUPPORTED_PLATFORM_ERROR)
         # Currently we don't deploy runtime dependencies if cross-compiling or using a static Qt.
-        # We also don't do it if targeting Linux, but we could provide an option to do
-        # so if we had a deploy tool or purely CMake-based deploy implementation.
         # Error out by default unless the project opted out of the error.
         # This provides us a migration path in the future without breaking compatibility promises.
         message(FATAL_ERROR
             "Support for installing runtime dependencies is not implemented for "
-            "this target platform (${CMAKE_SYSTEM_NAME}, ${qt_build_type_string})."
+            "this target platform (${CMAKE_SYSTEM_NAME}, ${qt_build_type_string}). "
+            ${unsupported_platform_extra_message}
         )
     else()
-        qt6_generate_deploy_script(${generate_args}
-            CONTENT "
-_qt_internal_show_skip_runtime_deploy_message(\"${qt_build_type_string}\")
-")
+        set(skip_message
+            "_qt_internal_show_skip_runtime_deploy_message(\"${qt_build_type_string}\"")
+        if(unsupported_platform_extra_message)
+            string(APPEND skip_message
+                "\n    EXTRA_MESSAGE \"${unsupported_platform_extra_message}\"")
+        endif()
+        string(APPEND skip_message "\n)")
+        qt6_generate_deploy_script(${generate_args} CONTENT "${skip_message}")
     endif()
 
     set(${arg_OUTPUT_SCRIPT} "${deploy_script}" PARENT_SCOPE)

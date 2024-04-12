@@ -133,14 +133,12 @@ static void adjust_head_and_tail(char *data, qsizetype storageSize, qsizetype lo
     initialized with \a value, which defaults to false (0).
 */
 QBitArray::QBitArray(qsizetype size, bool value)
-    : d(allocation_size(size), Qt::Uninitialized)
+    : d(allocation_size(size), value ? 0xFF : 0x00)
 {
     Q_ASSERT_X(size >= 0, "QBitArray::QBitArray", "Size must be greater than or equal to 0.");
     if (size <= 0)
         return;
 
-    uchar *c = reinterpret_cast<uchar *>(d.data());
-    memset(c + 1, value ? 0xff : 0, d.size() - 1);
     adjust_head_and_tail(d.data(), d.size(), size);
 }
 
@@ -205,14 +203,11 @@ qsizetype QBitArray::count(bool on) const
 */
 void QBitArray::resize(qsizetype size)
 {
-    if (!size) {
+    Q_ASSERT_X(size >= 0, "QBitArray::resize", "Size must be greater than or equal to 0.");
+    if (size <= 0) {
         d.resize(0);
     } else {
-        qsizetype s = d.size();
-        d.resize(allocation_size(size));
-        uchar *c = reinterpret_cast<uchar *>(d.data());
-        if (d.size() > s)
-            memset(c + s, 0, d.size() - s);
+        d.resize(allocation_size(size), 0x00);
         adjust_head_and_tail(d.data(), d.size(), size);
     }
 }
@@ -309,8 +304,9 @@ void QBitArray::fill(bool value, qsizetype begin, qsizetype end)
  */
 QBitArray QBitArray::fromBits(const char *data, qsizetype size)
 {
+    Q_ASSERT_X(size >= 0, "QBitArray::fromBits", "Size must be greater than or equal to 0.");
     QBitArray result;
-    if (size == 0)
+    if (size <= 0)
         return result;
 
     auto &d = result.d;

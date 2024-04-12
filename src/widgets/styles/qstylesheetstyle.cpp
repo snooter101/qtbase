@@ -4368,7 +4368,7 @@ void QStyleSheetStyle::drawControl(ControlElement ce, const QStyleOption *opt, Q
             if (subRule.hasDrawable()) {
                 subRule.configurePalette(&optCopy.palette, vopt->state & QStyle::State_Selected ? QPalette::HighlightedText : QPalette::Text,
                                                            vopt->state & QStyle::State_Selected ? QPalette::Highlight : QPalette::Base);
-                QWindowsStyle::drawControl(ce, &optCopy, p, w);
+                baseStyle()->drawControl(ce, &optCopy, p, w);
             } else {
                 p->save();
                 if (hasStyleRule(w, PseudoElement_Indicator)) {
@@ -4387,17 +4387,19 @@ void QStyleSheetStyle::drawControl(ControlElement ce, const QStyleOption *opt, Q
                     optIndicator.backgroundBrush = Qt::NoBrush; // no background
                     optIndicator.text.clear();
                     optIndicator.icon = QIcon();
-                    QWindowsStyle::drawControl(ce, &optIndicator, p, w);
+                    baseStyle()->drawControl(ce, &optIndicator, p, w);
 
                     // Now draw text, background,icon, and highlight, but not the indicator  with
                     // the base style. Since we can't turn off HasCheckIndicator to prevent the base
                     // style from drawing the check indicator again (it would change how the item
                     // gets laid out) we have to clip the indicator that's already been painted.
-                    const QRect checkRect = subElementRect(QStyle::SE_ItemViewItemCheckIndicator,
-                                                           &optIndicator, w);
+                    const QRect crStyle = subElementRect(QStyle::SE_ItemViewItemCheckIndicator,
+                                                         &optIndicator, w);
+                    const QRect crBase = baseStyle()->subElementRect(QStyle::SE_ItemViewItemCheckIndicator,
+                                                                     &optIndicator, w);
                     const QRegion clipRegion = QRegion(p->hasClipping() ? p->clipRegion()
                                                                         : QRegion(optIndicator.rect))
-                                             - checkRect;
+                                             - crStyle.united(crBase);
                     p->setClipRegion(clipRegion);
                 }
                 subRule.configurePalette(&optCopy.palette, QPalette::Text, QPalette::NoRole);
@@ -4486,7 +4488,7 @@ void QStyleSheetStyle::drawControl(ControlElement ce, const QStyleOption *opt, Q
 
                 QString titleText = p->fontMetrics().elidedText(dwOpt->title, Qt::ElideRight, r.width());
                 drawItemText(p, r,
-                             alignment, dwOpt->palette,
+                             alignment | Qt::TextHideMnemonic, dwOpt->palette,
                              dwOpt->state & State_Enabled, titleText,
                              QPalette::WindowText);
 
@@ -4871,6 +4873,7 @@ void QStyleSheetStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *op
             w = w->parentWidget(); //match on the QTabBar instead of the CloseButton
         }
         pseudoElement = PseudoElement_TabBarTabCloseButton;
+        break;
 #endif
 
     default:

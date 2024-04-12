@@ -1400,516 +1400,346 @@ bool QIcon::hasThemeIcon(const QString &name)
     return icon.name() == name;
 }
 
+static constexpr auto themeIconMapping = qOffsetStringArray(
+    "address-book-new",
+    "application-exit",
+    "appointment-new",
+    "call-start",
+    "call-stop",
+    "contact-new",
+    "document-new",
+    "document-open",
+    "document-open-recent",
+    "document-page-setup",
+    "document-print",
+    "document-print-preview",
+    "document-properties",
+    "document-revert",
+    "document-save",
+    "document-save-as",
+    "document-send",
+    "edit-clear",
+    "edit-copy",
+    "edit-cut",
+    "edit-delete",
+    "edit-find",
+    "edit-paste",
+    "edit-redo",
+    "edit-select-all",
+    "edit-undo",
+    "folder-new",
+    "format-indent-less",
+    "format-indent-more",
+    "format-justify-center",
+    "format-justify-fill",
+    "format-justify-left",
+    "format-justify-right",
+    "format-text-direction-ltr",
+    "format-text-direction-rtl",
+    "format-text-bold",
+    "format-text-italic",
+    "format-text-underline",
+    "format-text-strikethrough",
+    "go-down",
+    "go-home",
+    "go-next",
+    "go-previous",
+    "go-up",
+    "help-about",
+    "help-faq",
+    "insert-image",
+    "insert-link",
+    "insert-text",
+    "list-add",
+    "list-remove",
+    "mail-forward",
+    "mail-mark-important",
+    "mail-mark-read",
+    "mail-mark-unread",
+    "mail-message-new",
+    "mail-reply-all",
+    "mail-reply-sender",
+    "mail-send",
+    "media-eject",
+    "media-playback-pause",
+    "media-playback-start",
+    "media-playback-stop",
+    "media-record",
+    "media-seek-backward",
+    "media-seek-forward",
+    "media-skip-backward",
+    "media-skip-forward",
+    "object-rotate-left",
+    "object-rotate-right",
+    "process-stop",
+    "system-lock-screen",
+    "system-log-out",
+    "system-search",
+    "system-reboot",
+    "system-shutdown",
+    "tools-check-spelling",
+    "view-fullscreen",
+    "view-refresh",
+    "view-restore",
+    "window-close",
+    "window-new",
+    "zoom-fit-best",
+    "zoom-in",
+    "zoom-out",
+
+    "audio-card",
+    "audio-input-microphone",
+    "battery",
+    "camera-photo",
+    "camera-video",
+    "camera-web",
+    "computer",
+    "drive-harddisk",
+    "drive-optical",
+    "input-gaming",
+    "input-keyboard",
+    "input-mouse",
+    "input-tablet",
+    "media-flash",
+    "media-optical",
+    "media-tape",
+    "multimedia-player",
+    "network-wired",
+    "network-wireless",
+    "phone",
+    "printer",
+    "scanner",
+    "video-display",
+
+    "appointment-missed",
+    "appointment-soon",
+    "audio-volume-high",
+    "audio-volume-low",
+    "audio-volume-medium",
+    "audio-volume-muted",
+    "battery-caution",
+    "battery-low",
+    "dialog-error",
+    "dialog-information",
+    "dialog-password",
+    "dialog-question",
+    "dialog-warning",
+    "folder-drag-accept",
+    "folder-open",
+    "folder-visiting",
+    "image-loading",
+    "image-missing",
+    "mail-attachment",
+    "mail-unread",
+    "mail-read",
+    "mail-replied",
+    "media-playlist-repeat",
+    "media-playlist-shuffle",
+    "network-offline",
+    "printer-printing",
+    "security-high",
+    "security-low",
+    "software-update-available",
+    "software-update-urgent",
+    "sync-error",
+    "sync-synchronizing",
+    "user-available",
+    "user-offline",
+    "weather-clear",
+    "weather-clear-night",
+    "weather-few-clouds",
+    "weather-few-clouds-night",
+    "weather-fog",
+    "weather-showers",
+    "weather-snow",
+    "weather-storm"
+);
+static_assert(QIcon::ThemeIcon::NThemeIcons == QIcon::ThemeIcon(themeIconMapping.count()));
+
 static constexpr QLatin1StringView themeIconName(QIcon::ThemeIcon icon)
 {
-    constexpr auto mapping = qOffsetStringArray(
-        "address-book-new",
-        "application-exit",
-        "appointment-new",
-        "call-start",
-        "call-stop",
-        "contact-new",
-        "document-new",
-        "document-open",
-        "document-open-recent",
-        "document-page-setup",
-        "document-print",
-        "document-print-preview",
-        "document-properties",
-        "document-revert",
-        "document-save",
-        "document-save-as",
-        "document-send",
-        "edit-clear",
-        "edit-copy",
-        "edit-cut",
-        "edit-delete",
-        "edit-find",
-        "edit-find-replace",
-        "edit-paste",
-        "edit-redo",
-        "edit-select-all",
-        "edit-undo",
-        "folder-new",
-        "format-indent-less",
-        "format-indent-more",
-        "format-justify-center",
-        "format-justify-fill",
-        "format-justify-left",
-        "format-justify-right",
-        "format-text-direction-ltr",
-        "format-text-direction-rtl",
-        "format-text-bold",
-        "format-text-italic",
-        "format-text-underline",
-        "format-text-strikethrough",
-        "go-bottom",
-        "go-down",
-        "go-first",
-        "go-home",
-        "go-jump",
-        "go-last",
-        "go-next",
-        "go-previous",
-        "go-top",
-        "go-up",
-        "help-about",
-        "help-contents",
-        "help-faq",
-        "insert-image",
-        "insert-link",
-        "insert-object",
-        "insert-text",
-        "list-add",
-        "list-remove",
-        "mail-forward",
-        "mail-mark-important",
-        "mail-mark-junk",
-        "mail-mark-notjunk",
-        "mail-mark-read",
-        "mail-mark-unread",
-        "mail-message-new",
-        "mail-reply-all",
-        "mail-reply-sender",
-        "mail-send",
-        "mail-send-receive",
-        "media-eject",
-        "media-playback-pause",
-        "media-playback-start",
-        "media-playback-stop",
-        "media-record",
-        "media-seek-backward",
-        "media-seek-forward",
-        "media-skip-backward",
-        "media-skip-forward",
-        "object-flip-horizontal",
-        "object-flip-vertical",
-        "object-rotate-left",
-        "object-rotate-right",
-        "process-stop",
-        "system-lock-screen",
-        "system-log-out",
-        "system-run",
-        "system-search",
-        "system-reboot",
-        "system-shutdown",
-        "tools-check-spelling",
-        "view-fullscreen",
-        "view-refresh",
-        "view-restore",
-        "view-sort-ascending",
-        "view-sort-descending",
-        "window-close",
-        "window-new",
-        "zoom-fit-best",
-        "zoom-in",
-        "zoom-original",
-        "zoom-out",
-
-        "process-working",
-
-        "accessories-calculator",
-        "accessories-character-map",
-        "accessories-dictionary",
-        "accessories-text-editor",
-        "help-browser",
-        "multimedia-volume-control",
-        "preferences-desktop-accessibility",
-        "preferences-desktop-font",
-        "preferences-desktop-keyboard",
-        "preferences-desktop-locale",
-        "preferences-desktop-multimedia",
-        "preferences-desktop-screensaver",
-        "preferences-desktop-theme",
-        "preferences-desktop-wallpaper",
-        "system-file-manager",
-        "system-software-install",
-        "system-software-update",
-        "utilities-system-monitor",
-        "utilities-terminal",
-
-        "applications-accessories",
-        "applications-development",
-        "applications-engineering",
-        "applications-games",
-        "applications-graphics",
-        "applications-internet",
-        "applications-multimedia",
-        "applications-office",
-        "applications-other",
-        "applications-science",
-        "applications-system",
-        "applications-utilities",
-        "preferences-desktop",
-        "preferences-desktop-peripherals",
-        "preferences-desktop-personal",
-        "preferences-other",
-        "preferences-system",
-        "preferences-system-network",
-        "system-help",
-
-        "audio-card",
-        "audio-input-microphone",
-        "battery",
-        "camera-photo",
-        "camera-video",
-        "camera-web",
-        "computer",
-        "drive-harddisk",
-        "drive-optical",
-        "drive-removable-media",
-        "input-gaming",
-        "input-keyboard",
-        "input-mouse",
-        "input-tablet",
-        "media-flash",
-        "media-floppy",
-        "media-optical",
-        "media-tape",
-        "modem",
-        "multimedia-player",
-        "network-wired",
-        "network-wireless",
-        "pda",
-        "phone",
-        "printer",
-        "scanner",
-        "video-display",
-
-        "emblem-default",
-        "emblem-documents",
-        "emblem-downloads",
-        "emblem-favorite",
-        "emblem-important",
-        "emblem-mail",
-        "emblem-photos",
-        "emblem-readonly",
-        "emblem-shared",
-        "emblem-symbolic-link",
-        "emblem-synchronized",
-        "emblem-system",
-        "emblem-unreadable",
-
-        "appointment-missed",
-        "appointment-soon",
-        "audio-volume-high",
-        "audio-volume-low",
-        "audio-volume-medium",
-        "audio-volume-muted",
-        "battery-caution",
-        "battery-low",
-        "dialog-error",
-        "dialog-information",
-        "dialog-password",
-        "dialog-question",
-        "dialog-warning",
-        "folder-drag-accept",
-        "folder-open",
-        "folder-visiting",
-        "image-loading",
-        "image-missing",
-        "mail-attachment",
-        "mail-unread",
-        "mail-read",
-        "mail-replied",
-        "mail-signed",
-        "mail-signed-verified",
-        "media-playlist-repeat",
-        "media-playlist-shuffle",
-        "network-error",
-        "network-idle",
-        "network-offline",
-        "network-receive",
-        "network-transmit",
-        "network-transmit-receive",
-        "printer-error",
-        "printer-printing",
-        "security-high",
-        "security-medium",
-        "security-low",
-        "software-update-available",
-        "software-update-urgent",
-        "sync-error",
-        "sync-synchronizing",
-        "task-due",
-        "task-past-due",
-        "user-available",
-        "user-away",
-        "user-idle",
-        "user-offline",
-        "user-trash-full",
-        "weather-clear",
-        "weather-clear-night",
-        "weather-few-clouds",
-        "weather-few-clouds-night",
-        "weather-fog",
-        "weather-overcast",
-        "weather-severe-alert",
-        "weather-showers",
-        "weather-showers-scattered",
-        "weather-snow",
-        "weather-storm"
-    );
-    static_assert(QIcon::ThemeIcon::NThemeIcons == QIcon::ThemeIcon(mapping.count()));
-
     using ThemeIconIndex = std::underlying_type_t<QIcon::ThemeIcon>;
     const auto index = static_cast<ThemeIconIndex>(icon);
-    Q_ASSERT(index < mapping.count());
-    return QLatin1StringView(mapping.viewAt(index));
+    Q_ASSERT(index < themeIconMapping.count());
+    return QLatin1StringView(themeIconMapping.viewAt(index));
 }
 
 /*!
     \enum QIcon::ThemeIcon
+    \since 6.7
 
     This enum provides access to icons that are provided by most
     icon theme implementations.
 
-    \value AddressBookNew
-    \value ApplicationExit
-    \value AppointmentNew
-    \value CallStart
-    \value CallStop
-    \value ContactNew
-    \value DocumentNew
-    \value DocumentOpen
-    \value DocumentOpenRecent
-    \value DocumentPageSetup
-    \value DocumentPrint
-    \value DocumentPrintPreview
-    \value DocumentProperties
-    \value DocumentRevert
-    \value DocumentSave
-    \value DocumentSaveAs
-    \value DocumentSend
-    \value EditClear
-    \value EditCopy
-    \value EditCut
-    \value EditDelete
-    \value EditFind
-    \value EditFindReplace
-    \value EditPaste
-    \value EditRedo
-    \value EditSelectAll
-    \value EditUndo
-    \value FolderNew
-    \value FormatIndentLess
-    \value FormatIndentMore
-    \value FormatJustifyCenter
-    \value FormatJustifyFill
-    \value FormatJustifyLeft
-    \value FormatJustifyRight
-    \value FormatTextDirectionLtr
-    \value FormatTextDirectionRtl
-    \value FormatTextBold
-    \value FormatTextItalic
-    \value FormatTextUnderline
-    \value FormatTextStrikethrough
-    \value GoBottom
-    \value GoDown
-    \value GoFirst
-    \value GoHome
-    \value GoJump
-    \value GoLast
-    \value GoNext
-    \value GoPrevious
-    \value GoTop
-    \value GoUp
-    \value HelpAbout
-    \value HelpContents
-    \value HelpFaq
-    \value InsertImage
-    \value InsertLink
-    \value InsertObject
-    \value InsertText
-    \value ListAdd
-    \value ListRemove
-    \value MailForward
-    \value MailMarkImportant
-    \value MailMarkJunk
-    \value MailMarkNotjunk
-    \value MailMarkRead
-    \value MailMarkUnread
-    \value MailMessageNew
-    \value MailReplyAll
-    \value MailReplySender
-    \value MailSend
-    \value MailSendReceive
-    \value MediaEject
-    \value MediaPlaybackPause
-    \value MediaPlaybackStart
-    \value MediaPlaybackStop
-    \value MediaRecord
-    \value MediaSeekBackward
-    \value MediaSeekForward
-    \value MediaSkipBackward
-    \value MediaSkipForward
-    \value ObjectFlipHorizontal
-    \value ObjectFlipVertical
-    \value ObjectRotateLeft
-    \value ObjectRotateRight
-    \value ProcessStop
-    \value SystemLockScreen
-    \value SystemLogOut
-    \value SystemRun
-    \value SystemSearch
-    \value SystemReboot
-    \value SystemShutdown
-    \value ToolsCheckSpelling
-    \value ViewFullscreen
-    \value ViewRefresh
-    \value ViewRestore
-    \value ViewSortAscending
-    \value ViewSortDescending
-    \value WindowClose
-    \value WindowNew
-    \value ZoomFitBest
-    \value ZoomIn
-    \value ZoomOriginal
-    \value ZoomOut
+    \value AddressBookNew       The icon for the action to create a new address book.
+    \value ApplicationExit      The icon for exiting an application.
+    \value AppointmentNew       The icon for the action to create a new appointment.
+    \value CallStart            The icon for initiating or accepting a call.
+    \value CallStop             The icon for stopping a current call.
+    \value ContactNew           The icon for the action to create a new contact.
+    \value DocumentNew          The icon for the action to create a new document.
+    \value DocumentOpen         The icon for the action to open a document.
+    \value DocumentOpenRecent   The icon for the action to open a document that was recently opened.
+    \value DocumentPageSetup    The icon for the \e{page setup} action.
+    \value DocumentPrint        The icon for the \e{print} action.
+    \value DocumentPrintPreview The icon for the \e{print preview} action.
+    \value DocumentProperties   The icon for the action to view the properties of a document.
+    \value DocumentRevert       The icon for the action of reverting to a previous version of a document.
+    \value DocumentSave         The icon for the \e{save} action.
+    \value DocumentSaveAs       The icon for the \e{save as} action.
+    \value DocumentSend         The icon for the \e{send} action.
+    \value EditClear            The icon for the \e{clear} action.
+    \value EditCopy             The icon for the \e{copy} action.
+    \value EditCut              The icon for the \e{cut} action.
+    \value EditDelete           The icon for the \e{delete} action.
+    \value EditFind             The icon for the \e{find} action.
+    \value EditPaste            The icon for the \e{paste} action.
+    \value EditRedo             The icon for the \e{redo} action.
+    \value EditSelectAll        The icon for the \e{select all} action.
+    \value EditUndo             The icon for the \e{undo} action.
+    \value FolderNew            The icon for creating a new folder.
+    \value FormatIndentLess     The icon for the \e{decrease indent formatting} action.
+    \value FormatIndentMore     The icon for the \e{increase indent formatting} action.
+    \value FormatJustifyCenter  The icon for the \e{center justification formatting} action.
+    \value FormatJustifyFill    The icon for the \e{fill justification formatting} action.
+    \value FormatJustifyLeft    The icon for the \e{left justification formatting} action.
+    \value FormatJustifyRight   The icon for the \e{right justification} action.
+    \value FormatTextDirectionLtr   The icon for the \e{left-to-right text formatting} action.
+    \value FormatTextDirectionRtl   The icon for the \e{right-to-left formatting} action.
+    \value FormatTextBold       The icon for the \e{bold text formatting} action.
+    \value FormatTextItalic     The icon for the \e{italic text formatting} action.
+    \value FormatTextUnderline  The icon for the \e{underlined text formatting} action.
+    \value FormatTextStrikethrough  The icon for the \e{strikethrough text formatting} action.
+    \value GoDown               The icon for the \e{go down in a list} action.
+    \value GoHome               The icon for the \e{go to home location} action.
+    \value GoNext               The icon for the \e{go to the next item in a list} action.
+    \value GoPrevious           The icon for the \e{go to the previous item in a list} action.
+    \value GoUp                 The icon for the \e{go up in a list} action.
+    \value HelpAbout            The icon for the \e{About} item in the Help menu.
+    \value HelpFaq              The icon for the \e{FAQ} item in the Help menu.
+    \value InsertImage          The icon for the \e{insert image} action of an application.
+    \value InsertLink           The icon for the \e{insert link} action of an application.
+    \value InsertText           The icon for the \e{insert text} action of an application.
+    \value ListAdd              The icon for the \e{add to list} action.
+    \value ListRemove           The icon for the \e{remove from list} action.
+    \value MailForward          The icon for the \e{forward} action.
+    \value MailMarkImportant    The icon for the \e{mark as important} action.
+    \value MailMarkRead         The icon for the \e{mark as read} action.
+    \value MailMarkUnread       The icon for the \e{mark as unread} action.
+    \value MailMessageNew       The icon for the \e{compose new mail} action.
+    \value MailReplyAll         The icon for the \e{reply to all} action.
+    \value MailReplySender      The icon for the \e{reply to sender} action.
+    \value MailSend             The icon for the \e{send} action.
+    \value MediaEject           The icon for the \e{eject} action of a media player or file manager.
+    \value MediaPlaybackPause   The icon for the \e{pause} action of a media player.
+    \value MediaPlaybackStart   The icon for the \e{start playback} action of a media player.
+    \value MediaPlaybackStop    The icon for the \e{stop} action of a media player.
+    \value MediaRecord          The icon for the \e{record} action of a media application.
+    \value MediaSeekBackward    The icon for the \e{seek backward} action of a media player.
+    \value MediaSeekForward     The icon for the \e{seek forward} action of a media player.
+    \value MediaSkipBackward    The icon for the \e{skip backward} action of a media player.
+    \value MediaSkipForward     The icon for the \e{skip forward} action of a media player.
+    \value ObjectRotateLeft     The icon for the \e{rotate left} action performed on an object.
+    \value ObjectRotateRight    The icon for the \e{rotate right} action performed on an object.
+    \value ProcessStop          The icon for the \e{stop action in applications with} actions that
+                                may take a while to process, such as web page loading in a browser.
+    \value SystemLockScreen     The icon for the \e{lock screen} action.
+    \value SystemLogOut         The icon for the \e{log out} action.
+    \value SystemSearch         The icon for the \e{search} action.
+    \value SystemReboot         The icon for the \e{reboot} action.
+    \value SystemShutdown       The icon for the \e{shutdown} action.
+    \value ToolsCheckSpelling   The icon for the \e{check spelling} action.
+    \value ViewFullscreen       The icon for the \e{fullscreen} action.
+    \value ViewRefresh          The icon for the \e{refresh} action.
+    \value ViewRestore          The icon for leaving the fullscreen view.
+    \value WindowClose          The icon for the \e{close window} action.
+    \value WindowNew            The icon for the \e{new window} action.
+    \value ZoomFitBest          The icon for the \e{best fit} action.
+    \value ZoomIn               The icon for the \e{zoom in} action.
+    \value ZoomOut              The icon for the \e{zoom out} action.
 
-    \value ProcessWorking
+    \value AudioCard            The icon for the audio rendering device.
+    \value AudioInputMicrophone The icon for the microphone audio input device.
+    \value Battery              The icon for the system battery device.
+    \value CameraPhoto          The icon for a digital still camera devices.
+    \value CameraVideo          The icon for a video camera device.
+    \value CameraWeb            The icon for a web camera device.
+    \value Computer             The icon for the computing device as a whole.
+    \value DriveHarddisk        The icon for hard disk drives.
+    \value DriveOptical         The icon for optical media drives such as CD and DVD.
+    \value InputGaming          The icon for the gaming input device.
+    \value InputKeyboard        The icon for the keyboard input device.
+    \value InputMouse           The icon for the mousing input device.
+    \value InputTablet          The icon for graphics tablet input devices.
+    \value MediaFlash           The icon for flash media, such as a memory stick.
+    \value MediaOptical         The icon for physical optical media such as CD and DVD.
+    \value MediaTape            The icon for generic physical tape media.
+    \value MultimediaPlayer     The icon for generic multimedia playing devices.
+    \value NetworkWired         The icon for wired network connections.
+    \value NetworkWireless      The icon for wireless network connections.
+    \value Phone                The icon for phone devices.
+    \value Printer              The icon for a printer device.
+    \value Scanner              The icon for a scanner device.
+    \value VideoDisplay         The icon for the monitor that video gets displayed on.
 
-    \value AccessoriesCalculator
-    \value AccessoriesCharacterMap
-    \value AccessoriesDictionary
-    \value AccessoriesTextEditor
-    \value HelpBrowser
-    \value MultimediaVolumeControl
-    \value PreferencesDesktopAccessibility
-    \value PreferencesDesktopFont
-    \value PreferencesDesktopKeyboard
-    \value PreferencesDesktopLocale
-    \value PreferencesDesktopMultimedia
-    \value PreferencesDesktopScreensaver
-    \value PreferencesDesktopTheme
-    \value PreferencesDesktopWallpaper
-    \value SystemFileManager
-    \value SystemSoftwareInstall
-    \value SystemSoftwareUpdate
-    \value UtilitiesSystemMonitor
-    \value UtilitiesTerminal
-
-    \value ApplicationsAccessories
-    \value ApplicationsDevelopment
-    \value ApplicationsEngineering
-    \value ApplicationsGames
-    \value ApplicationsGraphics
-    \value ApplicationsInternet
-    \value ApplicationsMultimedia
-    \value ApplicationsOffice
-    \value ApplicationsOther
-    \value ApplicationsScience
-    \value ApplicationsSystem
-    \value ApplicationsUtilities
-    \value PreferencesDesktop
-    \value PreferencesDesktopPeripherals
-    \value PreferencesDesktopPersonal
-    \value PreferencesOther
-    \value PreferencesSystem
-    \value PreferencesSystemNetwork
-    \value SystemHelp
-
-    \value AudioCard
-    \value AudioInputMicrophone
-    \value Battery
-    \value CameraPhoto
-    \value CameraVideo
-    \value CameraWeb
-    \value Computer
-    \value DriveHarddisk
-    \value DriveOptical
-    \value DriveRemovableMedia
-    \value InputGaming
-    \value InputKeyboard
-    \value InputMouse
-    \value InputTablet
-    \value MediaFlash
-    \value MediaFloppy
-    \value MediaOptical
-    \value MediaTape
-    \value Modem
-    \value MultimediaPlayer
-    \value NetworkWired
-    \value NetworkWireless
-    \value Pda
-    \value Phone
-    \value Printer
-    \value Scanner
-    \value VideoDisplay
-
-    \value EmblemDefault
-    \value EmblemDocuments
-    \value EmblemDownloads
-    \value EmblemFavorite
-    \value EmblemImportant
-    \value EmblemMail
-    \value EmblemPhotos
-    \value EmblemReadonly
-    \value EmblemShared
-    \value EmblemSymbolicLink
-    \value EmblemSynchronized
-    \value EmblemSystem
-    \value EmblemUnreadable
-
-    \value AppointmentMissed
-    \value AppointmentSoon
-    \value AudioVolumeHigh
-    \value AudioVolumeLow
-    \value AudioVolumeMedium
-    \value AudioVolumeMuted
-    \value BatteryCaution
-    \value BatteryLow
-    \value DialogError
-    \value DialogInformation
-    \value DialogPassword
-    \value DialogQuestion
-    \value DialogWarning
-    \value FolderDragAccept
-    \value FolderOpen
-    \value FolderVisiting
-    \value ImageLoading
-    \value ImageMissing
-    \value MailAttachment
-    \value MailUnread
-    \value MailRead
-    \value MailReplied
-    \value MailSigned
-    \value MailSignedVerified
-    \value MediaPlaylistRepeat
-    \value MediaPlaylistShuffle
-    \value NetworkError
-    \value NetworkIdle
-    \value NetworkOffline
-    \value NetworkReceive
-    \value NetworkTransmit
-    \value NetworkTransmitReceive
-    \value PrinterError
-    \value PrinterPrinting
-    \value SecurityHigh
-    \value SecurityMedium
-    \value SecurityLow
-    \value SoftwareUpdateAvailable
-    \value SoftwareUpdateUrgent
-    \value SyncError
-    \value SyncSynchronizing
-    \value TaskDue
-    \value TaskPastDue
-    \value UserAvailable
-    \value UserAway
-    \value UserIdle
-    \value UserOffline
-    \value UserTrashFull
-    \value WeatherClear
-    \value WeatherClearNight
-    \value WeatherFewClouds
-    \value WeatherFewCloudsNight
-    \value WeatherFog
-    \value WeatherOvercast
-    \value WeatherSevereAlert
-    \value WeatherShowers
-    \value WeatherShowersScattered
-    \value WeatherSnow
-    \value WeatherStorm
+    \value AppointmentMissed    The icon for when an appointment was missed.
+    \value AppointmentSoon      The icon for when an appointment will occur soon.
+    \value AudioVolumeHigh      The icon used to indicate high audio volume.
+    \value AudioVolumeLow       The icon used to indicate low audio volume.
+    \value AudioVolumeMedium    The icon used to indicate medium audio volume.
+    \value AudioVolumeMuted     The icon used to indicate the muted state for audio playback.
+    \value BatteryCaution       The icon used when the battery is below 40%.
+    \value BatteryLow           The icon used when the battery is below 20%.
+    \value DialogError          The icon used when a dialog is opened to explain an error
+                                condition to the user.
+    \value DialogInformation    The icon used when a dialog is opened to give information to the
+                                user that may be pertinent to the requested action.
+    \value DialogPassword       The icon used when a dialog requesting the authentication
+                                credentials for a user is opened.
+    \value DialogQuestion       The icon used when a dialog is opened to ask a simple question
+                                to the user.
+    \value DialogWarning        The icon used when a dialog is opened to warn the user of
+                                impending issues with the requested action.
+    \value FolderDragAccept     The icon used for a folder while an acceptable object is being
+                                dragged onto it.
+    \value FolderOpen           The icon used for folders, while their contents are being displayed
+                                within the same window.
+    \value FolderVisiting       The icon used for folders, while their contents are being displayed
+                                in another window.
+    \value ImageLoading         The icon used while another image is being loaded.
+    \value ImageMissing         The icon used when another image could not be loaded.
+    \value MailAttachment       The icon for a message that contains attachments.
+    \value MailUnread           The icon for an unread message.
+    \value MailRead             The icon for a read message.
+    \value MailReplied          The icon for a message that has been replied to.
+    \value MediaPlaylistRepeat  The icon for the repeat mode of a media player.
+    \value MediaPlaylistShuffle The icon for the shuffle mode of a media player.
+    \value NetworkOffline       The icon used to indicate that the device is not connected to the
+                                network.
+    \value PrinterPrinting      The icon used while a print job is successfully being spooled to a
+                                printing device.
+    \value SecurityHigh         The icon used to indicate that the security level of an item is
+                                known to be high.
+    \value SecurityLow          The icon used to indicate that the security level of an item is
+                                known to be low.
+    \value SoftwareUpdateAvailable  The icon used to indicate that an update is available.
+    \value SoftwareUpdateUrgent The icon used to indicate that an urgent update is available.
+    \value SyncError            The icon used when an error occurs while attempting to synchronize
+                                data across devices.
+    \value SyncSynchronizing    The icon used while data is successfully synchronizing across
+                                devices.
+    \value UserAvailable        The icon used to indicate that a user is available.
+    \value UserOffline          The icon used to indicate that a user is not available.
+    \value WeatherClear         The icon used to indicate that the sky is clear.
+    \value WeatherClearNight    The icon used to indicate that the sky is clear
+                                during the night.
+    \value WeatherFewClouds     The icon used to indicate that the sky is partly cloudy.
+    \value WeatherFewCloudsNight    The icon used to indicate that the sky is partly cloudy
+                                during the night.
+    \value WeatherFog           The icon used to indicate that the weather is foggy.
+    \value WeatherShowers       The icon used to indicate that rain showers are occurring.
+    \value WeatherSnow          The icon used to indicate that snow is falling.
+    \value WeatherStorm         The icon used to indicate that the weather is stormy.
 
     \omitvalue NThemeIcons
 

@@ -2025,19 +2025,6 @@ QWidget *QApplicationPrivate::focusNextPrevChild_helper(QWidget *toplevel, bool 
  */
 void QApplicationPrivate::dispatchEnterLeave(QWidget* enter, QWidget* leave, const QPointF &globalPosF)
 {
-#if 0
-    if (leave) {
-        QEvent e(QEvent::Leave);
-        QCoreApplication::sendEvent(leave, & e);
-    }
-    if (enter) {
-        const QPoint windowPos = enter->window()->mapFromGlobal(globalPos);
-        QEnterEvent e(enter->mapFromGlobal(globalPos), windowPos, globalPos);
-        QCoreApplication::sendEvent(enter, & e);
-    }
-    return;
-#endif
-
     if ((!enter && !leave) || (enter == leave))
         return;
 
@@ -2658,6 +2645,7 @@ bool QApplication::notify(QObject *receiver, QEvent *e)
         Q_FALLTHROUGH();
     case QEvent::Leave:
         d->toolTipWakeUp.stop();
+        break;
     default:
         break;
     }
@@ -2682,6 +2670,7 @@ bool QApplication::notify(QObject *receiver, QEvent *e)
                     || key == Qt::Key_Up
                     || key == Qt::Key_Right
                     || key == Qt::Key_Down);
+        break;
     }
     default:
         break;

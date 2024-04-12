@@ -609,9 +609,9 @@ Optional arguments:
            from keystore password.)
          --sigfile <file>: Name of .SF/.DSA file.
          --digestalg <name>: Name of digest algorithm. Default is
-           "SHA1".
+           "SHA-256".
          --sigalg <name>: Name of signature algorithm. Default is
-           "SHA1withRSA".
+           "SHA256withRSA".
          --tsa <url>: Location of the Time Stamping Authority.
          --tsacert <alias>: Public key certificate for TSA.
          --internalsf: Include the .SF file inside the signature block.
@@ -2727,8 +2727,9 @@ void checkAndWarnGradleLongPaths(const QString &outputDirectory)
     QDirIterator it(outputDirectory, QStringList(QStringLiteral("*.java")), QDir::Files,
                     QDirIterator::Subdirectories);
     while (it.hasNext()) {
-        if (it.next().size() >= MAX_PATH)
-            longFileNames.append(it.next());
+        const QString &filePath = it.next();
+        if (filePath.size() >= MAX_PATH)
+            longFileNames.append(filePath);
     }
 
     if (!longFileNames.isEmpty()) {

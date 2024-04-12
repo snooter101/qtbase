@@ -98,15 +98,16 @@ private:
     using if_compatible_pointer = typename std::enable_if<QtPrivate::IsCompatiblePointer<Pointer>::value, bool>::type;
 
     template <typename T>
+    using if_compatible_qstring_like = typename std::enable_if<std::is_same<T, QString>::value, bool>::type;
+
+    template <typename T>
     using if_compatible_container = typename std::enable_if<QtPrivate::IsContainerCompatibleWithQStringView<T>::value, bool>::type;
 
     template <typename Char>
     static constexpr qsizetype lengthHelperPointer(const Char *str) noexcept
     {
-#if defined(QT_SUPPORTS_IS_CONSTANT_EVALUATED)
-        if (qIsConstantEvaluated())
+        if (q20::is_constant_evaluated())
             return std::char_traits<Char>::length(str);
-#endif
         return QtPrivate::qustrlen(reinterpret_cast<const char16_t *>(str));
     }
     static qsizetype lengthHelperPointer(const QChar *str) noexcept
@@ -153,7 +154,13 @@ public:
         : QStringView(str, str ? lengthHelperPointer(str) : 0) {}
 #endif
 
-    inline QStringView(const QString &str) noexcept;
+#ifdef Q_QDOC
+    QStringView(const QString &str) noexcept;
+#else
+    template <typename String, if_compatible_qstring_like<String> = true>
+    QStringView(const String &str) noexcept
+        : QStringView(str.isNull() ? nullptr : str.data(), qsizetype(str.size())) {}
+#endif
 
     template <typename Container, if_compatible_container<Container> = true>
     constexpr Q_ALWAYS_INLINE QStringView(const Container &c) noexcept

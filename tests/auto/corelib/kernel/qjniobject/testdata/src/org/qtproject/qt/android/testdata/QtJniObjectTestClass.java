@@ -128,6 +128,9 @@ public class QtJniObjectTestClass
     public String stringMethod() { return staticStringMethod(); }
 
     // --------------------------------------------------------------------------------------------
+    public static String staticEchoMethod(String value) { return value; }
+
+    // --------------------------------------------------------------------------------------------
     public static Throwable staticThrowableMethod() { return A_THROWABLE_OBJECT; }
     public Throwable throwableMethod() { return staticThrowableMethod(); }
 
@@ -315,5 +318,13 @@ public class QtJniObjectTestClass
     public int callMeBackWithDouble(double value)
     {
         return callbackWithDouble(value);
+    }
+
+    public Object callMethodThrowsException() throws Exception {
+        throw new Exception();
+    }
+
+    public static Object callStaticMethodThrowsException() throws Exception {
+        throw new Exception();
     }
 }

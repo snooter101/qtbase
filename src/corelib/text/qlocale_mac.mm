@@ -32,9 +32,11 @@ static void printLocalizationInformation()
     if (!lcLocale().isDebugEnabled())
         return;
 
+#if defined(Q_OS_MACOS)
     // Trigger initialization of standard user defaults, so that Foundation picks
     // up -AppleLanguages and -AppleLocale passed on the command line.
     Q_UNUSED(NSUserDefaults.standardUserDefaults);
+#endif
 
     auto singleLineDescription = [](NSArray *array) {
         NSString *str = [array description];
@@ -571,7 +573,7 @@ static QLocale::Language codeToLanguage(QStringView s)
     return QLocalePrivate::codeToLanguage(s);
 }
 
-QVariant QSystemLocale::query(QueryType type, QVariant in) const
+QVariant QSystemLocale::query(QueryType type, QVariant &&in) const
 {
     QMacAutoReleasePool pool;
 

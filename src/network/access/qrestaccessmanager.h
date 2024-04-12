@@ -4,6 +4,10 @@
 #ifndef QRESTACCESSMANAGER_H
 #define QRESTACCESSMANAGER_H
 
+#if 0
+#pragma qt_class(QRestAccessManager)
+#endif
+
 #include <QtNetwork/qnetworkaccessmanager.h>
 
 QT_BEGIN_NAMESPACE
@@ -70,7 +74,7 @@ QNetworkReply *customWithDataImpl(const QNetworkRequest& request, const QByteArr
 /* end */
 
 class QRestAccessManagerPrivate;
-class Q_NETWORK_EXPORT QRestAccessManager : public QObject
+class QT_TECH_PREVIEW_API Q_NETWORK_EXPORT QRestAccessManager : public QObject
 {
     Q_OBJECT
     using CallbackPrototype = void(*)(QRestReply&);

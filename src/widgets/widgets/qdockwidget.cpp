@@ -133,7 +133,7 @@ QSize QDockWidgetTitleButton::dockButtonIconSize() const
     if (m_iconSize < 0) {
         m_iconSize = style()->pixelMetric(QStyle::PM_SmallIconSize, nullptr, this);
         if (style()->styleHint(QStyle::SH_DockWidget_ButtonsHaveFrame, nullptr, this))
-            m_iconSize = (m_iconSize * 3) / 4;
+            m_iconSize = (m_iconSize * 5) / 8;  // 16 -> 10
     }
     return QSize(m_iconSize, m_iconSize);
 }
@@ -883,15 +883,15 @@ Qt::DockWidgetArea QDockWidgetPrivate::toDockWidgetArea(QInternal::DockPosition 
 
 void QDockWidgetPrivate::setResizerActive(bool active)
 {
-#ifdef Q_OS_WINDOWS
-    Q_UNUSED(active);
-#else
     Q_Q(QDockWidget);
+    const auto *dwLayout = qobject_cast<QDockWidgetLayout *>(layout);
+    if (dwLayout->nativeWindowDeco(q->isFloating()))
+        return;
+
     if (active && !resizer)
         resizer = new QWidgetResizeHandler(q);
     if (resizer)
         resizer->setEnabled(active);
-#endif
 }
 
 bool QDockWidgetPrivate::isAnimating() const

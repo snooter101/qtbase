@@ -19,7 +19,6 @@
 #if QT_CONFIG(process)
 # include <QtCore/QProcess>
 #endif
-#include <QtCore/private/qcoreevent_p.h>
 #include <QtCore/private/qeventloop_p.h>
 
 #include <QtGui/QFontDatabase>
@@ -1166,7 +1165,7 @@ void SendPostedEventsTester::doTest()
     QPointer<SendPostedEventsTester> p = this;
     QApplication::postEvent(this, new QEvent(QEvent::User));
     // DeferredDelete should not be delivered until returning from this function
-    QApplication::postEvent(this, new QDeferredDeleteEvent());
+    deleteLater();
 
     QEventLoop eventLoop;
     QMetaObject::invokeMethod(&eventLoop, "quit", Qt::QueuedConnection);
@@ -2576,7 +2575,13 @@ public:
         : QWidget(parent), showAgain(showAgain)
     {
         QTimer::singleShot(0, this, &ShowCloseShowWidget::doClose);
-        QTimer::singleShot(500, this, [] () { QCoreApplication::exit(1); });
+        int timeout = 500;
+#ifdef Q_OS_ANDROID
+        // On Android, CI Android emulator is not running HW accelerated graphics and can be slow,
+        // use a longer timeout to avoid flaky failures
+        timeout = 1000;
+#endif
+        QTimer::singleShot(timeout, this, [] () { QCoreApplication::exit(1); });
     }
 
 private slots:

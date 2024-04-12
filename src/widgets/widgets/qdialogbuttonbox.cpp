@@ -294,7 +294,7 @@ void QDialogButtonBoxPrivate::layoutButtons()
         for (QWidget *here : layoutWidgets) {
             QWidget::setTabOrder(prev, here);
             prev = here;
-            if (auto *pushButton = qobject_cast<QPushButton *>(prev); pushButton->isDefault())
+            if (auto *pushButton = qobject_cast<QPushButton *>(prev); pushButton && pushButton->isDefault())
                 q->setFocusProxy(pushButton);
         }
     }
@@ -1029,8 +1029,10 @@ void QDialogButtonBoxPrivate::ensureFirstAcceptIsDefault()
         // focus proxy/first button stealing the default button status
         // immediately when the button box is focused, which is not what
         // we want. Account for this by explicitly making the firstAcceptButton
-        // focused as well, unless an explicit focus widget has been set.
-        if (dialog && !dialog->focusWidget())
+        // focused as well, unless an explicit focus widget has been set, or
+        // a dialog child has Qt::StrongFocus.
+        if (dialog && !(QWidgetPrivate::get(dialog)->hasChildWithFocusPolicy(Qt::StrongFocus, q)
+                        || dialog->focusWidget()))
             firstAcceptButton->setFocus();
     }
 }

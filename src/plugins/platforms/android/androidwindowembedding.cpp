@@ -15,12 +15,14 @@ Q_DECLARE_JNI_CLASS(QtView, "org/qtproject/qt/android/QtView");
 Q_DECLARE_JNI_CLASS(QtEmbeddedDelegate, "org/qtproject/qt/android/QtEmbeddedDelegate");
 
 namespace QtAndroidWindowEmbedding {
-    void createRootWindow(JNIEnv *, jclass, QtJniTypes::View rootView)
+    void createRootWindow(JNIEnv *, jclass, QtJniTypes::View rootView,
+                          jint x, jint y, jint width, jint height)
     {
         // QWindow should be constructed on the Qt thread rather than directly in the caller thread
         // To avoid hitting checkReceiverThread assert in QCoreApplication::doNotify
-        QMetaObject::invokeMethod(qApp, [rootView] {
+        QMetaObject::invokeMethod(qApp, [rootView, x, y, width, height] {
             QWindow *parentWindow = QWindow::fromWinId(reinterpret_cast<WId>(rootView.object()));
+            parentWindow->setGeometry(x, y, width, height);
             rootView.callMethod<void>("createWindow", reinterpret_cast<jlong>(parentWindow));
         });
     }
@@ -38,10 +40,21 @@ namespace QtAndroidWindowEmbedding {
             if (visible) {
                 window->showNormal();
                 if (!window->parent()->isVisible())
-                    window->parent()->show();
+                    window->parent()->showNormal();
             } else {
                 window->hide();
             }
+        });
+    }
+
+    void resizeWindow(JNIEnv *, jclass, jlong windowRef, jint x, jint y, jint width, jint height)
+    {
+        QMetaObject::invokeMethod(qApp, [windowRef, x, y, width, height] {
+            QWindow *window = reinterpret_cast<QWindow*>(windowRef);
+            QWindow *parent = window->parent();
+            if (parent)
+                parent->setGeometry(x, y, width, height);
+            window->setGeometry(0, 0, width, height);
         });
     }
 
@@ -52,7 +65,8 @@ namespace QtAndroidWindowEmbedding {
                              Q_JNI_NATIVE_SCOPED_METHOD(deleteWindow, QtAndroidWindowEmbedding)});
 
         success &= env.registerNativeMethods(Traits<QtView>::className(),
-                            {Q_JNI_NATIVE_SCOPED_METHOD(setWindowVisible, QtAndroidWindowEmbedding)});
+                            {Q_JNI_NATIVE_SCOPED_METHOD(setWindowVisible, QtAndroidWindowEmbedding),
+                             Q_JNI_NATIVE_SCOPED_METHOD(resizeWindow, QtAndroidWindowEmbedding)});
         return success;
 
     }

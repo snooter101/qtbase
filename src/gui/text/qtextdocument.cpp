@@ -1296,6 +1296,8 @@ void QTextDocument::setHtml(const QString &html)
     d->enableUndoRedo(false);
     d->beginEditBlock();
     d->clear();
+    // ctor calls parse() to build up QTextHtmlParser::nodes list
+    // then import() populates the QTextDocument from those
     QTextHtmlImporter(this, html, QTextHtmlImporter::ImportToDocument).import();
     d->endEditBlock();
     d->enableUndoRedo(previousState);
@@ -1500,6 +1502,10 @@ static bool findInBlock(const QTextBlock &block, const QRegularExpression &expr,
 
     If the \a from position is 0 (the default) the search begins from the beginning
     of the document; otherwise it begins at the specified position.
+
+    \warning For historical reasons, the case sensitivity option set on
+    \a expr is ignored. Instead, the \a options are used to determine
+    if the search is case sensitive or not.
 */
 QTextCursor QTextDocument::find(const QRegularExpression &expr, int from, FindFlags options) const
 {

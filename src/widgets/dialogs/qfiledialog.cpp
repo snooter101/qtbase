@@ -138,8 +138,9 @@ Q_GLOBAL_STATIC(QUrl, lastVisitedDir)
   dialog are not instantiated, so related accessors such as layout() and
   itemDelegate() return null. Also, not all platforms show file dialogs
   with a title bar, so be aware that the caption text might not be visible to
-  the user. You can set the \l DontUseNativeDialog option to ensure that the
-  widget-based implementation is used instead of the native dialog.
+  the user. You can set the \l DontUseNativeDialog option or set the
+  \l{Qt::AA_DontUseNativeDialogs}{AA_DontUseNativeDialogs} application attribute
+  to ensure that the widget-based implementation is used instead of the native dialog.
 
   \sa QDir, QFileInfo, QFile, QColorDialog, QFontDialog, {Standard Dialogs Example}
 */
@@ -185,38 +186,43 @@ Q_GLOBAL_STATIC(QUrl, lastVisitedDir)
 /*!
     \enum QFileDialog::Option
 
-    \value ShowDirsOnly Only show directories in the file dialog. By
-    default both files and directories are shown. (Valid only in the
-    \l Directory file mode.)
+    Options that influence the behavior of the dialog.
 
-    \value DontResolveSymlinks Don't resolve symlinks in the file
-    dialog. By default symlinks are resolved.
+    \value ShowDirsOnly Only show directories. By
+    default, both files and directories are shown.\br
+    This option is only effective in the \l Directory file mode.
+
+    \value DontResolveSymlinks Don't resolve symlinks.
+    By default, symlinks are resolved.
 
     \value DontConfirmOverwrite Don't ask for confirmation if an
-    existing file is selected. By default, confirmation is requested.
-    (Valid only if \l acceptMode is \l {QFileDialog::}{AcceptSave}).
+    existing file is selected. By default, confirmation is requested.\br
+    This option is only effective if \l acceptMode is \l {QFileDialog::}{AcceptSave}).
+    It is furthermore not used on macOS for native file dialogs.
 
-    Note: This option is not supported on macOS when using the
-    native file dialog.
+    \value DontUseNativeDialog Don't use a platform-native file dialog,
+    but the widget-based one provided by Qt.\br
+    By default, a native file dialog is shown unless you use a subclass
+    of QFileDialog that contains the Q_OBJECT macro, the global
+    \l{Qt::}{AA_DontUseNativeDialogs} application attribute is set, or the platform
+    does not have a native dialog of the type that you require.\br
+    For the option to be effective, you must set it before changing
+    other properties of the dialog, or showing the dialog.
 
-    \value DontUseNativeDialog Don't use the native file dialog. By
-    default, the native file dialog is used unless you use a subclass
-    of QFileDialog that contains the Q_OBJECT macro, or the platform
-    does not have a native dialog of the type that you require.
-
-    \b{Note:} This option must be set before changing dialog properties
-    or showing the dialog.
-
-    \value ReadOnly Indicates that the model is readonly.
+    \value ReadOnly Indicates that the model is read-only.
 
     \value HideNameFilterDetails Indicates if the file name filter details are
     hidden or not.
 
-    \value DontUseCustomDirectoryIcons Always use the default directory icon.
-    Some platforms allow the user to set a different icon. Custom icon lookup
-    causes a big performance impact over network or removable drives.
-    Setting this will enable the QFileIconProvider::DontUseCustomDirectoryIcons
-    option in the icon provider. This enum value was added in Qt 5.2.
+    \value DontUseCustomDirectoryIcons Always use the default directory icon.\br
+    Some platforms allow the user to set a different icon, but custom icon lookup
+    might cause significant performance issues over network or removable drives.\br
+    Setting this will enable the
+    \l{QAbstractFileIconProvider::}{DontUseCustomDirectoryIcons}
+    option in \l{iconProvider()}.\br
+    This enum value was added in Qt 5.2.
+
+    \sa options, testOption
 */
 
 /*!
@@ -2534,7 +2540,8 @@ QUrl QFileDialog::getSaveFileUrl(QWidget *parent,
     On Windows and \macos, this static function uses the
     native file dialog and not a QFileDialog. However, the native Windows file
     dialog does not support displaying files in the directory chooser. You need
-    to pass \l{QFileDialog::}{DontUseNativeDialog} to display files using a
+    to pass the \l{QFileDialog::}{DontUseNativeDialog} option, or set the global
+    \\l{Qt::}{AA_DontUseNativeDialogs} application attribute to display files using a
     QFileDialog.
 
     Note that the \macos native file dialog does not show a title bar.
@@ -3787,8 +3794,9 @@ void QFileDialogPrivate::enterDirectory(const QModelIndex &index)
         }
     } else {
         // Do not accept when shift-clicking to multi-select a file in environments with single-click-activation (KDE)
-        if (!q->style()->styleHint(QStyle::SH_ItemView_ActivateItemOnSingleClick, nullptr, qFileDialogUi->treeView)
-            || q->fileMode() != QFileDialog::ExistingFiles || !(QGuiApplication::keyboardModifiers() & Qt::CTRL)) {
+        if ((!q->style()->styleHint(QStyle::SH_ItemView_ActivateItemOnSingleClick, nullptr, qFileDialogUi->treeView)
+             || q->fileMode() != QFileDialog::ExistingFiles || !(QGuiApplication::keyboardModifiers() & Qt::CTRL))
+            && index.model()->flags(index) & Qt::ItemIsEnabled) {
             q->accept();
         }
     }

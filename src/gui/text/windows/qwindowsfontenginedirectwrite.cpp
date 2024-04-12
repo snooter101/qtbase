@@ -12,7 +12,6 @@
 #include <QtCore/private/qwinregistry_p.h>
 #include <QtGui/private/qguiapplication_p.h>
 #include <qpa/qplatformintegration.h>
-#include <QtGui/private/qhighdpiscaling_p.h>
 #include <QtGui/qpainterpath.h>
 
 #if QT_CONFIG(directwrite3)
@@ -166,7 +165,7 @@ static DWRITE_MEASURING_MODE renderModeToMeasureMode(DWRITE_RENDERING_MODE rende
 static DWRITE_RENDERING_MODE hintingPreferenceToRenderingMode(const QFontDef &fontDef)
 {
     QFont::HintingPreference hintingPreference = QFont::HintingPreference(fontDef.hintingPreference);
-    if (QHighDpiScaling::isActive() && hintingPreference == QFont::PreferDefaultHinting) {
+    if (!qFuzzyCompare(qApp->devicePixelRatio(), 1.0) && hintingPreference == QFont::PreferDefaultHinting) {
         // Microsoft documentation recommends using asymmetric rendering for small fonts
         // at pixel size 16 and less, and symmetric for larger fonts.
         hintingPreference = fontDef.pixelSize > 16.0
@@ -471,7 +470,7 @@ QFontEngine::FaceId QWindowsFontEngineDirectWrite::faceId() const
     return m_faceId;
 }
 
-void QWindowsFontEngineDirectWrite::recalcAdvances(QGlyphLayout *glyphs, QFontEngine::ShaperFlags) const
+void QWindowsFontEngineDirectWrite::recalcAdvances(QGlyphLayout *glyphs, QFontEngine::ShaperFlags shaperFlags) const
 {
     QVarLengthArray<UINT16> glyphIndices(glyphs->numGlyphs);
 
@@ -483,11 +482,13 @@ void QWindowsFontEngineDirectWrite::recalcAdvances(QGlyphLayout *glyphs, QFontEn
 
     HRESULT hr;
     DWRITE_RENDERING_MODE renderMode = hintingPreferenceToRenderingMode(fontDef);
-    if (renderMode == DWRITE_RENDERING_MODE_GDI_CLASSIC || renderMode == DWRITE_RENDERING_MODE_GDI_NATURAL) {
+    bool needsDesignMetrics = shaperFlags & QFontEngine::DesignMetrics;
+    if (!needsDesignMetrics && (renderMode == DWRITE_RENDERING_MODE_GDI_CLASSIC
+                             || renderMode == DWRITE_RENDERING_MODE_GDI_NATURAL)) {
         hr = m_directWriteFontFace->GetGdiCompatibleGlyphMetrics(float(fontDef.pixelSize),
                                                                  1.0f,
                                                                  NULL,
-                                                                 TRUE,
+                                                                 renderMode == DWRITE_RENDERING_MODE_GDI_NATURAL,
                                                                  glyphIndices.data(),
                                                                  glyphIndices.size(),
                                                                  glyphMetrics.data());
@@ -1027,6 +1028,10 @@ void QWindowsFontEngineDirectWrite::initFontInfo(const QFontDef &request,
             fontDef.styleName = QWindowsDirectWriteFontDatabase::localeString(names, englishLocale);
             names->Release();
         }
+
+        // Color font
+        if (face3->GetPaletteEntryCount() > 0)
+            glyphFormat = QFontEngine::Format_ARGB;
 
         face3->Release();
     }

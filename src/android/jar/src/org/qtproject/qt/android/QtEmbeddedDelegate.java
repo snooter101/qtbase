@@ -21,13 +21,16 @@ import android.view.ViewGroup;
 import java.util.ArrayList;
 import java.util.HashMap;
 
+import org.qtproject.qt.android.accessibility.QtAccessibilityDelegate;
+
 class QtEmbeddedDelegate extends QtActivityDelegateBase implements QtNative.AppStateDetailsListener {
     // TODO simplistic implementation with one QtView, expand to support multiple views QTBUG-117649
     private QtView m_view;
     private long m_rootWindowRef = 0L;
     private QtNative.ApplicationStateDetails m_stateDetails;
+    private boolean m_windowLoaded = false;
 
-    private static native void createRootWindow(View rootView);
+    private static native void createRootWindow(View rootView, int x, int y, int width, int height);
     static native void deleteWindow(long windowReference);
 
     public QtEmbeddedDelegate(Activity context) {
@@ -89,16 +92,18 @@ class QtEmbeddedDelegate extends QtActivityDelegateBase implements QtNative.AppS
 
     @Override
     public void onAppStateDetailsChanged(QtNative.ApplicationStateDetails details) {
-        m_stateDetails = details;
-        if (m_stateDetails.nativePluginIntegrationReady) {
-            QtNative.runAction(() -> {
-                DisplayMetrics metrics = Resources.getSystem().getDisplayMetrics();
-                QtDisplayManager.setApplicationDisplayMetrics(m_activity,
-                                                              metrics.widthPixels,
-                                                              metrics.heightPixels);
-              if (m_view != null)
-                  createRootWindow(m_view);
-            });
+        synchronized (this) {
+            m_stateDetails = details;
+            if (m_stateDetails.nativePluginIntegrationReady) {
+                QtNative.runAction(() -> {
+                    DisplayMetrics metrics = Resources.getSystem().getDisplayMetrics();
+                    QtDisplayManager.setApplicationDisplayMetrics(m_activity,
+                                                                  metrics.widthPixels,
+                                                                  metrics.heightPixels);
+
+                });
+                createRootWindow();
+            }
         }
     }
 
@@ -123,18 +128,23 @@ class QtEmbeddedDelegate extends QtActivityDelegateBase implements QtNative.AppS
         // TODO verify if returning m_view here works, this is used by the androidjniinput
         // when e.g. showing a keyboard, so depends on getting the keyboard focus working
         // QTBUG-118873
-        return m_view;
+        if (m_view == null)
+            return null;
+        return m_view.getQtWindow();
     }
 
     public void queueLoadWindow()
     {
-        if (m_stateDetails.nativePluginIntegrationReady)  {
-            createRootWindow(m_view);
+        synchronized (this) {
+            if (m_stateDetails.nativePluginIntegrationReady)
+                createRootWindow();
         }
     }
 
     void setView(QtView view) {
         m_view = view;
+        if (m_view != null)
+            registerGlobalFocusChangeListener(m_view);
     }
 
     public void setRootWindowRef(long ref) {
@@ -145,5 +155,12 @@ class QtEmbeddedDelegate extends QtActivityDelegateBase implements QtNative.AppS
         if (m_rootWindowRef != 0L)
             deleteWindow(m_rootWindowRef);
         m_rootWindowRef = 0L;
+    }
+
+    private void createRootWindow() {
+        if (m_view != null && !m_windowLoaded) {
+            createRootWindow(m_view, m_view.getLeft(), m_view.getTop(),  m_view.getWidth(), m_view.getHeight());
+            m_windowLoaded = true;
+        }
     }
 }
